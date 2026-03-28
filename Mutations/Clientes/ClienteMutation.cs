@@ -26,7 +26,6 @@ namespace RmsErp.Api.Mutations.Clientes
         string Departamento,
         string Ciudad,
         string Direccion,
-        string Telefono,
         List<ContactoInput>? Contactos
     );
 
@@ -142,7 +141,6 @@ namespace RmsErp.Api.Mutations.Clientes
                         Departamento = sInput.Departamento,
                         Ciudad = sInput.Ciudad,
                         Direccion = sInput.Direccion,
-                        Telefono = sInput.Telefono,
                         Estado = "ACTIVO"
                     };
 
@@ -256,7 +254,6 @@ namespace RmsErp.Api.Mutations.Clientes
                         Departamento = sInput.Departamento,
                         Ciudad = sInput.Ciudad,
                         Direccion = sInput.Direccion,
-                        Telefono = sInput.Telefono,
                         Estado = "ACTIVO",
                         ClienteId = id 
                     };
