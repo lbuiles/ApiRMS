@@ -4,6 +4,7 @@ using RmsErp.Api.Models.Clientes;
 using RmsErp.Api.Models.Catalogos;
 using RmsErp.Api.Models.Modulos;
 using RmsErp.Api.Models.Usuarios;
+using RmsErp.Api.Models.Tracker;
 
 namespace RmsErp.Api.Data
 {
@@ -33,10 +34,20 @@ namespace RmsErp.Api.Data
         public DbSet<ClientePoliza> ClientesPolizas { get; set; }
         public DbSet<ClienteServicio> ClientesServicios { get; set; }
         public DbSet<ClienteRegion> ClientesRegiones { get; set; }
+        public DbSet<Proyecto> Proyectos { get; set; }
+        public DbSet<ProyectoObservacion> ProyectoObservaciones { get; set; }
+        
+        // --- NUEVA TABLA PARA LAS DIVISIONES ---
+        public DbSet<CategoriaProyecto> ProyectosCategorias { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // --- Configuraciones de CategoriaProyecto ---
+            modelBuilder.Entity<CategoriaProyecto>()
+                .Property(c => c.PresupuestoTotal)
+                .HasPrecision(18, 2);
 
             // --- Configuraciones Originales ---
             modelBuilder.Entity<Usuario>()
@@ -80,7 +91,6 @@ namespace RmsErp.Api.Data
                 .HasForeignKey<ClienteOperacion>(co => co.ClienteId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // B. Llaves Primarias Compuestas para las tablas puente (N a N)
             modelBuilder.Entity<ClientePoliza>()
                 .HasKey(cp => new { cp.ClienteId, cp.TipoPolizaId });
 

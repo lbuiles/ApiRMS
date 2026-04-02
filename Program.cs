@@ -15,6 +15,14 @@ using RmsErp.Api.Mutations.Clientes;
 using RmsErp.Api.Mutations.Usuarios;
 using RmsErp.Api.Mutations.Menus;
 using RmsErp.Api.Mutations.Permisos;
+using RmsErp.Api.Queries.Tracker;
+using RmsErp.Api.Mutations.Tracker;
+
+// --- NUEVO: Usings necesarios para los archivos y el servicio ---
+using RmsErp.Api.Services; 
+using Microsoft.Extensions.FileProviders;
+using System.IO;
+// -----------------------------------------------------------------
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,7 +53,6 @@ builder.Services.AddAuthorization(options =>
     options.DefaultPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
-
 });
 
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
@@ -56,12 +63,14 @@ builder.Services
     .AddTypeExtension<ClienteQuery>()
     .AddTypeExtension<UsuarioQuery>()
     .AddTypeExtension<MenuQuery>()
+    .AddTypeExtension<ProyectoQuery>()
     
     .AddMutationType(d => d.Name("Mutation"))
     .AddTypeExtension<ClienteMutation>()
     .AddTypeExtension<UsuarioMutation>()
     .AddTypeExtension<MenuMutation>()
     .AddTypeExtension<PermisoMutation>()
+    .AddTypeExtension<ProyectoMutation>()
     
     .AddAuthorization()
     .AddProjections()
@@ -79,7 +88,26 @@ builder.Services.AddCors(options =>
     });
 });
 
+// --- NUEVO: Registrar el servicio de Almacenamiento y los Controladores REST ---
+builder.Services.AddScoped<IAlmacenamientoService, AlmacenamientoLocalService>();
+builder.Services.AddControllers();
+// ------------------------------------------------------------------------------
+
 var app = builder.Build();
+
+// --- NUEVO: Configuración para servir la carpeta 'uploads' localmente ---
+var uploadsPath = System.IO.Path.Combine(builder.Environment.ContentRootPath, "uploads");
+if (!Directory.Exists(uploadsPath))
+{
+    Directory.CreateDirectory(uploadsPath);
+}
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(uploadsPath),
+    RequestPath = "/uploads"
+});
+// ------------------------------------------------------------------------
 
 app.UseRouting();
 app.UseCors(); 
@@ -88,5 +116,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGraphQL("/graphql");
+
+// --- NUEVO: Mapear los endpoints REST (nuestro UploadController) ---
+app.MapControllers();
+// -------------------------------------------------------------------
 
 app.Run();

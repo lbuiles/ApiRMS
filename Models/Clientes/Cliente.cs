@@ -41,5 +41,6 @@ namespace RmsErp.Api.Models.Clientes
         public virtual ICollection<ClientePoliza> ClientePolizas { get; set; } = new List<ClientePoliza>();
         public virtual ICollection<ClienteServicio> ClienteServicios { get; set; } = new List<ClienteServicio>();
         public virtual ICollection<ClienteRegion> ClienteRegiones { get; set; } = new List<ClienteRegion>();
+        public virtual ICollection<ClienteDocumento> Documentos { get; set; } = new List<ClienteDocumento>();
     }
 }
