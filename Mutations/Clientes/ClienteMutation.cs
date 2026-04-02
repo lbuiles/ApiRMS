@@ -1,6 +1,5 @@
 using HotChocolate;
 using RmsErp.Api.Data;
-using RmsErp.Api.Models;
 using Microsoft.EntityFrameworkCore;
 using HotChocolate.Authorization;
 using System;
@@ -8,11 +7,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using RmsErp.Api.Models.Clientes;
-using RmsErp.Api.Models.Catalogos;
+using System.IO;
+using Microsoft.AspNetCore.Hosting;
 
 namespace RmsErp.Api.Mutations.Clientes
 {
-    // --- INPUTS PARA LA ESTRUCTURA JERÁRQUICA ---
+    // ==========================================
+    // 1. INPUTS PARA LA ESTRUCTURA JERÁRQUICA
+    // ==========================================
     
     public record ContactoInput(
         string Nombre,
@@ -29,6 +31,12 @@ namespace RmsErp.Api.Mutations.Clientes
         List<ContactoInput>? Contactos
     );
 
+    // --- NUEVO INPUT PARA DOCUMENTOS ---
+    public record DocumentoInput(
+        string TipoDocumento,
+        string Url
+    );
+
     public record ClienteInput(
         string RazonSocial,
         string Nit,
@@ -40,9 +48,6 @@ namespace RmsErp.Api.Mutations.Clientes
         string ContactoPrincipal,
         string UsuarioCreacion,
 
-        // ==========================================
-        // NUEVOS CAMPOS (Catálogos y Configuraciones)
-        // ==========================================
         int? TipoClienteId,
         
         // Condiciones Financieras
@@ -63,8 +68,14 @@ namespace RmsErp.Api.Mutations.Clientes
         List<int>? ServiciosIds,
         List<int>? PolizasIds,
 
-        List<SucursalInput>? Sucursales
+        // Relaciones 1 a Muchos
+        List<SucursalInput>? Sucursales,
+        List<DocumentoInput>? Documentos // <-- AHORA RECIBIMOS LOS DOCUMENTOS
     );
+
+    // ==========================================
+    // 2. CLASE DE MUTACIONES PRINCIPAL
+    // ==========================================
 
     [ExtendObjectType("Mutation")]
     [Authorize]
@@ -130,7 +141,7 @@ namespace RmsErp.Api.Mutations.Clientes
                     nuevoCliente.ClienteRegiones.Add(new ClienteRegion { RegionId = id });
             }
 
-            // 3. Mapeo recursivo de Sucursales y sus Contactos (Tu lógica original intacta)
+            // 3. Mapeo recursivo de Sucursales y sus Contactos
             if (input.Sucursales != null && input.Sucursales.Any())
             {
                 foreach (var sInput in input.Sucursales)
@@ -157,12 +168,25 @@ namespace RmsErp.Api.Mutations.Clientes
                             });
                         }
                     }
-
                     nuevoCliente.Sucursales.Add(nuevaSucursal);
                 }
             }
 
-            // 4. Guardado atómico (Transaccional)
+            // 4. Mapeo de Documentos (NUEVO)
+            if (input.Documentos != null && input.Documentos.Any())
+            {
+                foreach (var docInput in input.Documentos)
+                {
+                    nuevoCliente.Documentos.Add(new ClienteDocumento
+                    {
+                        TipoDocumento = docInput.TipoDocumento,
+                        Url = docInput.Url,
+                        FechaSubida = DateTime.Now
+                    });
+                }
+            }
+
+            // 5. Guardado atómico (Transaccional)
             context.Clientes.Add(nuevoCliente);
             await context.SaveChangesAsync(); 
             
@@ -173,9 +197,10 @@ namespace RmsErp.Api.Mutations.Clientes
         public async Task<Cliente?> UpdateCliente(
             Guid id, 
             ClienteInput input, 
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IWebHostEnvironment env)
         {
-            // 1. Cargar el cliente con TODOS sus hijos y extensiones
+            // 1. Cargar el cliente con TODOS sus hijos y extensiones (Incluyendo Documentos)
             var cliente = await context.Clientes
                 .Include(c => c.Condiciones)
                 .Include(c => c.Operacion)
@@ -236,43 +261,56 @@ namespace RmsErp.Api.Mutations.Clientes
                     cliente.ClienteRegiones.Add(new ClienteRegion { ClienteId = id, RegionId = regionId });
             }
 
-            // 5. ELIMINACIÓN Y RECREACIÓN DE SUCURSALES (Tu lógica intacta)
+            // 5. ELIMINACIÓN Y RECREACIÓN DE SUCURSALES
             foreach (var suc in cliente.Sucursales.ToList())
             {
                 context.ClientesContactos.RemoveRange(suc.Contactos);
                 context.ClientesSucursales.Remove(suc);
             }
 
-            if (input.Sucursales != null)
-            {
-                foreach (var sInput in input.Sucursales)
-                {
-                    var nuevaSucursal = new ClienteSucursal
-                    {
-                        Id = Guid.NewGuid(), 
-                        Nombre = sInput.Nombre,
-                        Departamento = sInput.Departamento,
-                        Ciudad = sInput.Ciudad,
-                        Direccion = sInput.Direccion,
-                        Estado = "ACTIVO",
-                        ClienteId = id 
-                    };
+            // 6. ACTUALIZACIÓN INTELIGENTE Y BORRADO FÍSICO DE DOCUMENTOS
+            
+            // Extraemos las URLs que vienen de Angular
+            var urlsNuevas = input.Documentos?.Select(d => d.Url).ToList() ?? new List<string>();
+            
+            // ¡NUEVO!: Vamos directo a la tabla a buscar los documentos actuales del cliente
+            var docsActuales = await context.Set<ClienteDocumento>()
+                                            .Where(d => d.ClienteId == id)
+                                            .ToListAsync();
 
-                    if (sInput.Contactos != null)
+            // A. Buscar los que el usuario QUITÓ en Angular (Para borrarlos de BD y del Disco Duro)
+            var docsAEliminar = docsActuales.Where(d => !urlsNuevas.Contains(d.Url)).ToList();
+            
+            foreach (var doc in docsAEliminar)
+            {
+                // 1. Borrar de la base de datos (Modo Seguro EF Core)
+                context.Remove(doc);
+
+                // 2. Borrar físicamente del servidor
+                var rutaRelativa = doc.Url.TrimStart('/').Replace('/', System.IO.Path.DirectorySeparatorChar);
+                var rutaFisica = System.IO.Path.Combine(env.ContentRootPath, rutaRelativa);
+
+                if (File.Exists(rutaFisica))
+                {
+                    File.Delete(rutaFisica);
+                }
+            }
+
+            // B. Buscar SOLO los documentos realmente nuevos y agregarlos a la BD
+            if (input.Documentos != null)
+            {
+                var docsAAgregar = input.Documentos.Where(d => !docsActuales.Any(da => da.Url == d.Url)).ToList();
+                
+                foreach (var docInput in docsAAgregar)
+                {
+                    context.Add(new ClienteDocumento
                     {
-                        foreach (var cInput in sInput.Contactos)
-                        {
-                            nuevaSucursal.Contactos.Add(new ClienteContacto
-                            {
-                                Id = Guid.NewGuid(), 
-                                Nombre = cInput.Nombre,
-                                Cargo = cInput.Cargo,
-                                Email = cInput.Email,
-                                Telefono = cInput.Telefono
-                            });
-                        }
-                    }
-                    context.ClientesSucursales.Add(nuevaSucursal);
+                        Id = Guid.NewGuid(), // Forzamos nuevo registro
+                        ClienteId = id,
+                        TipoDocumento = docInput.TipoDocumento,
+                        Url = docInput.Url,
+                        FechaSubida = DateTime.Now
+                    });
                 }
             }
 
@@ -293,6 +331,18 @@ namespace RmsErp.Api.Mutations.Clientes
         {
             var cliente = await context.Clientes.FindAsync(id);
             if (cliente == null) return false;
+
+            bool tieneProyectosActivos = await context.Proyectos
+                .AnyAsync(p => p.ClienteId == id && 
+                               p.Estado != "Finalizado" && 
+                               p.Estado != "Cancelado");
+
+            if (tieneProyectosActivos)
+            {
+                throw new GraphQLException(new Error(
+                    "No se puede inactivar el cliente porque tiene proyectos activos en ejecución.",
+                    "CLIENTE_CON_PROYECTOS_ACTIVOS"));
+            }
 
             cliente.Estado = "INACTIVO";
             await context.SaveChangesAsync();
