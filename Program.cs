@@ -17,6 +17,8 @@ using RmsErp.Api.Mutations.Menus;
 using RmsErp.Api.Mutations.Permisos;
 using RmsErp.Api.Queries.Tracker;
 using RmsErp.Api.Mutations.Tracker;
+using RmsErp.Api.Queries.Contratistas;
+using RmsErp.Api.Mutations.Contratistas;
 
 // --- NUEVO: Usings necesarios para los archivos y el servicio ---
 using RmsErp.Api.Services; 
@@ -64,6 +66,9 @@ builder.Services
     .AddTypeExtension<UsuarioQuery>()
     .AddTypeExtension<MenuQuery>()
     .AddTypeExtension<ProyectoQuery>()
+    .AddTypeExtension<SubFlujosQuery>()
+    .AddTypeExtension<DashboardQuery>()
+    .AddTypeExtension<ContratistaProveedorQuery>()
     
     .AddMutationType(d => d.Name("Mutation"))
     .AddTypeExtension<ClienteMutation>()
@@ -71,6 +76,10 @@ builder.Services
     .AddTypeExtension<MenuMutation>()
     .AddTypeExtension<PermisoMutation>()
     .AddTypeExtension<ProyectoMutation>()
+    .AddTypeExtension<SubFlujosMutation>()
+    .AddTypeExtension<AnticipoDirectoMutation>()
+    .AddTypeExtension<EliminarSubFlujosMutation>()
+    .AddTypeExtension<ContratistaProveedorMutation>()
     
     .AddAuthorization()
     .AddProjections()

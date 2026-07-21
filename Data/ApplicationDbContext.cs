@@ -5,6 +5,7 @@ using RmsErp.Api.Models.Catalogos;
 using RmsErp.Api.Models.Modulos;
 using RmsErp.Api.Models.Usuarios;
 using RmsErp.Api.Models.Tracker;
+using RmsErp.Api.Models.Contratistas;
 
 namespace RmsErp.Api.Data
 {
@@ -37,8 +38,20 @@ namespace RmsErp.Api.Data
         public DbSet<Proyecto> Proyectos { get; set; }
         public DbSet<ProyectoObservacion> ProyectoObservaciones { get; set; }
         
-        // --- NUEVA TABLA PARA LAS DIVISIONES ---
         public DbSet<CategoriaProyecto> ProyectosCategorias { get; set; }
+
+        // --- NUEVAS TABLAS DEL TRACKER ---
+        public DbSet<ProyectoRequisicion> ProyectoRequisiciones { get; set; }
+        public DbSet<ProyectoOrdenTrabajo> ProyectoOrdenesTrabajo { get; set; }
+        public DbSet<ProyectoAnticipo> ProyectoAnticipos { get; set; }
+        public DbSet<ProyectoAnticipoDirecto> ProyectoAnticiposDirectos { get; set; }
+
+        // --- MÓDULO CONTRATISTAS Y PROVEEDORES ---
+        public DbSet<ContratistaProveedor> ContratistaProveedores { get; set; }
+        public DbSet<CPAccionista> CPAccionistas { get; set; }
+        public DbSet<CPCuentaBancaria> CPCuentasBancarias { get; set; }
+        public DbSet<CPReferencia> CPReferencias { get; set; }
+        public DbSet<CPDocumento> CPDocumentos { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -99,6 +112,38 @@ namespace RmsErp.Api.Data
 
             modelBuilder.Entity<ClienteRegion>()
                 .HasKey(cr => new { cr.ClienteId, cr.RegionId });
+
+            // ==========================================
+            // NUEVAS RELACIONES DEL TRACKER (Sub-flujos)
+            // ==========================================
+
+            // Requisiciones -> Proyectos
+            modelBuilder.Entity<ProyectoRequisicion>()
+                .HasOne(pr => pr.Proyecto)
+                .WithMany(p => p.Requisiciones)
+                .HasForeignKey(pr => pr.ProyectoId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // OTs -> Proyectos
+            modelBuilder.Entity<ProyectoOrdenTrabajo>()
+                .HasOne(ot => ot.Proyecto)
+                .WithMany(p => p.OrdenesTrabajo)
+                .HasForeignKey(ot => ot.ProyectoId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Anticipos -> OTs
+            modelBuilder.Entity<ProyectoAnticipo>()
+                .HasOne(a => a.OrdenTrabajo)
+                .WithMany(ot => ot.Anticipos)
+                .HasForeignKey(a => a.OrdenTrabajoId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Anticipos -> Proyectos (Evitar ciclos en SQL Server)
+            modelBuilder.Entity<ProyectoAnticipo>()
+                .HasOne(a => a.Proyecto)
+                .WithMany(p => p.Anticipos)
+                .HasForeignKey(a => a.ProyectoId)
+                .OnDelete(DeleteBehavior.NoAction); 
         }
     }
 }
