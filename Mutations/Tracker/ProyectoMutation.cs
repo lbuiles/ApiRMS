@@ -39,26 +39,26 @@ namespace RmsErp.Api.Mutations.Tracker
         DateTime? FechaInicioActividades,
         DateTime? FechaTentativaFin,
         DateTime? FechaFinalizacionActividades,
-        
+
         // Checklists
         bool DossierEntregado,
         bool LiquidacionTerminada,
         bool FacturacionCompletada,
         bool CierreTecnicoAprobado,
-        
+
         // Financiero
         string? NumeroOC,
         decimal ValorOC,
         decimal ValorGasto,
         decimal ValorFacturado,
         decimal CostoRealTotal,
-        
+
         string? EstadoForzado
     );
 
     public record ObservacionInput(
         Guid ProyectoId,
-        Guid UsuarioId, 
+        Guid UsuarioId,
         string ObservacionTexto
     );
 
@@ -68,21 +68,21 @@ namespace RmsErp.Api.Mutations.Tracker
     {
         [Authorize(Policy = "proyectos.crear")]
         public async Task<Proyecto> AddProyecto(
-            ProyectoInput input, 
+            ProyectoInput input,
             [Service] ApplicationDbContext context)
         {
             var nuevoProyecto = new Proyecto
             {
-                LineaNegocio = input.LineaNegocio,
-                Codigo = input.Codigo,
-                Nombre = input.Nombre,
-                ClienteId = input.ClienteId,
-                SupervisorCliente = input.SupervisorCliente,
-                ResponsableId = input.ResponsableId,
-                ValorOC = input.ValorOC,
-                FechaAsignacion = input.FechaAsignacion ?? DateTime.UtcNow,
+                LineaNegocio         = input.LineaNegocio,
+                Codigo               = input.Codigo,
+                Nombre               = input.Nombre,
+                ClienteId            = input.ClienteId,
+                SupervisorCliente    = input.SupervisorCliente,
+                ResponsableId        = input.ResponsableId,
+                ValorOC              = input.ValorOC,
+                FechaAsignacion      = input.FechaAsignacion ?? DateTime.UtcNow,
                 FechaRespuestaCliente = input.FechaRespuestaCliente,
-                Estado = "PENDIENTE" 
+                Estado               = "PENDIENTE"
             };
 
             context.Proyectos.Add(nuevoProyecto);
@@ -92,8 +92,8 @@ namespace RmsErp.Api.Mutations.Tracker
 
         [Authorize(Policy = "proyectos.editar")]
         public async Task<Proyecto?> UpdateProyecto(
-            Guid id, 
-            ProyectoUpdateInput input, 
+            Guid id,
+            ProyectoUpdateInput input,
             [Service] ApplicationDbContext context)
         {
             var proyecto = await context.Proyectos.FindAsync(id);
@@ -102,47 +102,44 @@ namespace RmsErp.Api.Mutations.Tracker
             // ==========================================
             // 1. ACTUALIZACIÓN DE DATOS BÁSICOS
             // ==========================================
-            proyecto.Nombre = input.Nombre;
-            proyecto.ResponsableId = input.ResponsableId;
-            proyecto.SupervisorCliente = input.SupervisorCliente;
-            proyecto.Contratista = input.Contratista;
-            proyecto.EjecutorInternoId = input.EjecutorInternoId;
-            proyecto.Polizas = input.Polizas;
-            proyecto.CentroDeCostos = input.CentroDeCostos;
-            
-            proyecto.NumeroOC = input.NumeroOC;
-            proyecto.ValorOC = input.ValorOC;
-            proyecto.ValorFacturado = input.ValorFacturado;
-            
+            proyecto.Nombre               = input.Nombre;
+            proyecto.ResponsableId        = input.ResponsableId;
+            proyecto.SupervisorCliente    = input.SupervisorCliente;
+            proyecto.Contratista          = input.Contratista;
+            proyecto.EjecutorInternoId    = input.EjecutorInternoId;
+            proyecto.Polizas              = input.Polizas;
+            proyecto.CentroDeCostos       = input.CentroDeCostos;
+
+            proyecto.NumeroOC             = input.NumeroOC;
+            proyecto.ValorOC              = input.ValorOC;
+            proyecto.ValorFacturado       = input.ValorFacturado;
+
             // ELIMINADO INTENCIONALMENTE PARA RESPETAR LA ÚNICA FUENTE DE VERDAD:
-            // proyecto.ValorGasto = input.ValorGasto; 
-            // proyecto.CostoRealTotal = input.CostoRealTotal; 
+            // proyecto.ValorGasto = input.ValorGasto;
+            // proyecto.CostoRealTotal = input.CostoRealTotal;
 
             // Checklists de cierre
-            proyecto.DossierEntregado = input.DossierEntregado;
-            proyecto.LiquidacionTerminada = input.LiquidacionTerminada;
-            proyecto.FacturacionCompletada = input.FacturacionCompletada;
-            proyecto.CierreTecnicoAprobado = input.CierreTecnicoAprobado;
+            proyecto.DossierEntregado       = input.DossierEntregado;
+            proyecto.LiquidacionTerminada   = input.LiquidacionTerminada;
+            proyecto.FacturacionCompletada  = input.FacturacionCompletada;
+            proyecto.CierreTecnicoAprobado  = input.CierreTecnicoAprobado;
 
             // Fechas
-            proyecto.FechaRespuestaCliente = input.FechaRespuestaCliente;
-            proyecto.FechaSolicitudPermisos = input.FechaSolicitudPermisos;
-            proyecto.FechaVisitaTecnica = input.FechaVisitaTecnica;
-            proyecto.FechaEnvioPermiso = input.FechaEnvioPermiso;
-            proyecto.FechaAprobacionPermisos = input.FechaAprobacionPermisos;
-            proyecto.FechaEnvioPresupuesto = input.FechaEnvioPresupuesto;
+            proyecto.FechaRespuestaCliente      = input.FechaRespuestaCliente;
+            proyecto.FechaSolicitudPermisos     = input.FechaSolicitudPermisos;
+            proyecto.FechaVisitaTecnica         = input.FechaVisitaTecnica;
+            proyecto.FechaEnvioPermiso          = input.FechaEnvioPermiso;
+            proyecto.FechaAprobacionPermisos    = input.FechaAprobacionPermisos;
+            proyecto.FechaEnvioPresupuesto      = input.FechaEnvioPresupuesto;
             proyecto.FechaAprobacionPresupuesto = input.FechaAprobacionPresupuesto;
-            proyecto.FechaInicioActividades = input.FechaInicioActividades;
-            proyecto.FechaTentativaFin = input.FechaTentativaFin;
+            proyecto.FechaInicioActividades     = input.FechaInicioActividades;
+            proyecto.FechaTentativaFin          = input.FechaTentativaFin;
             proyecto.FechaFinalizacionActividades = input.FechaFinalizacionActividades;
 
             // ==========================================
-            // 2. CANDADOS ADMINISTRATIVOS Y PREVIOS (Reglas Excel)
+            // 2. CANDADOS ADMINISTRATIVOS Y PREVIOS
             // ==========================================
-            
-            // OC no requiere presupuesto previo — puede registrarse como PENDIENTE o en cualquier momento
 
-            // Reglas de Cierre Administrativo
             if (input.FacturacionCompletada)
             {
                 if (string.IsNullOrWhiteSpace(input.NumeroOC))
@@ -161,63 +158,41 @@ namespace RmsErp.Api.Mutations.Tracker
                 throw new GraphQLException("Secuencia inválida: No puedes marcar la liquidación como terminada si el 'Cierre Técnico en Terreno' no ha sido aprobado primero.");
 
             // ==========================================
-            // 3. MÁQUINA DE ESTADOS AUTOMÁTICA Y REGLAS DE FLUJO
+            // 3. MÁQUINA DE ESTADOS AUTOMÁTICA
             // ==========================================
 
-            // Regla: Estados Forzados (Cancelaciones)
-            if (!string.IsNullOrEmpty(input.EstadoForzado) && 
+            if (!string.IsNullOrEmpty(input.EstadoForzado) &&
                (input.EstadoForzado == "Cancelado" || input.EstadoForzado == "Incumplimiento"))
             {
                 proyecto.Estado = input.EstadoForzado;
             }
-            // Regla Fila 14: Análisis Final -> FINALIZADO_TOTAL
-            else if (proyecto.DossierEntregado && proyecto.LiquidacionTerminada && proyecto.FacturacionCompletada && proyecto.CierreTecnicoAprobado) 
+            else if (proyecto.DossierEntregado && proyecto.LiquidacionTerminada &&
+                     proyecto.FacturacionCompletada && proyecto.CierreTecnicoAprobado)
             {
-                // Sin candado de gasto — técnicos internos pueden no generar costo registrado
-                proyecto.Estado = "FINALIZADO_TOTAL"; 
+                proyecto.Estado = "FINALIZADO_TOTAL";
             }
-            // Regla Fila 10: Fin Actividades -> FINALIZADO_PARCIAL
-            else if (proyecto.FechaFinalizacionActividades.HasValue) 
+            else if (proyecto.FechaFinalizacionActividades.HasValue)
             {
                 if (!proyecto.FechaInicioActividades.HasValue)
                     throw new GraphQLException("Secuencia inválida: No puedes registrar la fecha de fin de actividades sin haber registrado una fecha de inicio.");
-                
+
                 if (proyecto.FechaFinalizacionActividades.Value < proyecto.FechaInicioActividades.Value)
                     throw new GraphQLException("Secuencia inválida: La fecha de finalización no puede ser anterior a la fecha de inicio.");
 
-                // ==========================================
-                // CANDADO OPERATIVO: Sub-flujos abiertos al momento de terminar la obra
-                // No tiene sentido finalizar si aún hay compras o pagos sin resolver
-                // ==========================================
-
-                // 0. Debe existir al menos una OT o una Requisición registrada
-                var tieneOTs = await context.ProyectoOrdenesTrabajo
-                    .AnyAsync(ot => ot.ProyectoId == id);
-
-                var tieneRequisiciones = await context.ProyectoRequisiciones
-                    .AnyAsync(r => r.ProyectoId == id);
-
-                // OTs y REQs opcionales — según Julián no debe ser requisito para finalizar
-
-                // 1. OTs en Borrador (nunca se activaron — posiblemente abandonadas)
-                // Solo OTs de contratistas externos pueden quedar en Borrador
-                // (las de técnico interno nacen EMITIDAS directamente)
                 var otsBorrador = await context.ProyectoOrdenesTrabajo
                     .AnyAsync(ot => ot.ProyectoId == id && ot.Estado == "Borrador" && ot.TecnicoInternoId == null);
 
                 if (otsBorrador)
-                    throw new GraphQLException("Candado Operativo: Hay Órdenes de Trabajo en estado 'Borrador'. Debes activarlas (solicitando un anticipo) o eliminarlas antes de registrar el fin de la obra.");
+                    throw new GraphQLException("Candado Operativo: Hay Órdenes de Trabajo en estado 'Borrador'. Debes activarlas o eliminarlas antes de registrar el fin de la obra.");
 
-                // 2. Requisiciones que no han completado su ciclo completo
                 var reqPendientes = await context.ProyectoRequisiciones
                     .AnyAsync(r => r.ProyectoId == id &&
-                                  r.Estado != "CERRADA" &&
-                                  r.Estado != "Rechazado");
+                                   r.Estado != "CERRADA" &&
+                                   r.Estado != "Rechazado");
 
                 if (reqPendientes)
                     throw new GraphQLException("Candado Operativo: Hay Requisiciones que no han completado su ciclo. Deben estar en estado 'CERRADA' antes de registrar el fin de obra.");
 
-                // 3. Anticipos solicitados pero aún sin pagar
                 var antPendientes = await context.ProyectoAnticipos
                     .AnyAsync(a => a.ProyectoId == id &&
                                   (a.Estado == "SOLICITADO" || a.Estado == "Por Aprobar"));
@@ -225,20 +200,15 @@ namespace RmsErp.Api.Mutations.Tracker
                 if (antPendientes)
                     throw new GraphQLException("Candado Operativo: Hay Anticipos a contratistas pendientes de pago en WorldOffice. Ciérralos antes de registrar el fin de la obra.");
 
-                proyecto.Estado = "FINALIZADO_PARCIAL"; 
+                proyecto.Estado = "FINALIZADO_PARCIAL";
             }
-            // Regla Fila 8 y 9: Inicio en Terreno -> EN_EJECUCIÓN
             else if (proyecto.FechaInicioActividades.HasValue)
             {
-                // Ejecutor ya no es requerido aquí — se asigna desde la OT
-                // Candado de Fila 8: Pólizas aprobadas
                 if (string.IsNullOrWhiteSpace(input.Polizas) || input.Polizas == "Requiere - Pendiente")
                     throw new GraphQLException("Requisito previo: Debes definir y aprobar el estado de las pólizas antes de autorizar el inicio de actividades en terreno.");
 
-                proyecto.Estado = "EN_EJECUCIÓN"; 
+                proyecto.Estado = "EN_EJECUCIÓN";
             }
-            // Regla Fila 2: CentroDeCostos -> PENDIENTE_PRELIMINARES (segundo paso del flujo)
-            // También activa con cualquier otro dato de preliminares ingresado
             else if (!string.IsNullOrWhiteSpace(input.CentroDeCostos) ||
                      proyecto.FechaRespuestaCliente.HasValue ||
                      proyecto.FechaAprobacionPresupuesto.HasValue ||
@@ -246,63 +216,49 @@ namespace RmsErp.Api.Mutations.Tracker
                      proyecto.FechaSolicitudPermisos.HasValue ||
                      !string.IsNullOrWhiteSpace(input.NumeroOC))
             {
-                // El Centro de Costos es el primer requisito de preliminares
-                // Si hay datos de fases más avanzadas pero falta el CC, lo advertimos
                 if (string.IsNullOrWhiteSpace(input.CentroDeCostos) &&
                     (proyecto.FechaSolicitudPermisos.HasValue || proyecto.FechaEnvioPresupuesto.HasValue))
-                    throw new GraphQLException("Requisito previo: Debes registrar el Centro de Costos (ID de WorldOffice) antes de avanzar a la fase de permisos y presupuesto.");
+                    throw new GraphQLException("Requisito previo: Debes registrar el Centro de Costos antes de avanzar a la fase de permisos y presupuesto.");
 
                 proyecto.Estado = "PENDIENTE_PRELIMINARES";
             }
-            // Estado por defecto (Nacimiento del proyecto - Fila 1)
             else
             {
-                proyecto.Estado = "PENDIENTE"; 
+                proyecto.Estado = "PENDIENTE";
             }
 
             // ==========================================
-            // 4. AUDITORÍA FINAL DE CALIDAD Y SUB-FLUJOS
+            // 4. AUDITORÍA FINAL DE CALIDAD
             // ==========================================
             if (proyecto.Estado == "FINALIZADO_TOTAL")
             {
-                // Candados de campos obligatorios
                 if (string.IsNullOrWhiteSpace(input.CentroDeCostos))
-                    throw new GraphQLException("Auditoría fallida: El Centro de Costos (ID WorldOffice) es obligatorio para el cierre contable del proyecto. Es el primer requisito del flujo preliminar.");
+                    throw new GraphQLException("Auditoría fallida: El Centro de Costos (ID WorldOffice) es obligatorio para el cierre contable del proyecto.");
 
                 if (!input.FechaRespuestaCliente.HasValue)
                     throw new GraphQLException("Auditoría fallida: Es obligatorio registrar la 'Respuesta a Cliente (SLA)' antes de cerrar el proyecto.");
-                
-                // Permisos opcionales: solo valida si el proyecto tiene alguna fecha de permisos registrada
-                // Si ninguna fecha está, significa que no requiere permisos (obra nueva / cliente directo)
+
                 bool tieneAlgunaFechaPermiso = input.FechaSolicitudPermisos.HasValue
                     || input.FechaVisitaTecnica.HasValue
                     || input.FechaAprobacionPermisos.HasValue;
+
                 if (tieneAlgunaFechaPermiso &&
                     (!input.FechaSolicitudPermisos.HasValue || !input.FechaVisitaTecnica.HasValue || !input.FechaAprobacionPermisos.HasValue))
                     throw new GraphQLException("Auditoría fallida: El proyecto tiene fechas de permisos parciales. Completa la solicitud, visita técnica y aprobación — o limpia todas las fechas si no requiere permisos.");
 
                 if (string.IsNullOrWhiteSpace(input.Polizas))
-                    throw new GraphQLException("Auditoría fallida: Debes definir el Estado de Pólizas (Requiere, No requiere, etc.) antes de cerrar.");
+                    throw new GraphQLException("Auditoría fallida: Debes definir el Estado de Pólizas antes de cerrar.");
 
-                if (string.IsNullOrWhiteSpace(input.CentroDeCostos))
-                    throw new GraphQLException("Auditoría fallida: El Centro de Costos es obligatorio para el cierre contable del proyecto.");
-
-                // ==========================================
-                // CANDADOS DE COMPRAS Y DINERO
-                // ==========================================
-                
-                // 1. Validar que todas las Requisiciones estén CERRADAS
                 var reqPendientes = await context.ProyectoRequisiciones
                     .AnyAsync(r => r.ProyectoId == id &&
-                                  r.Estado != "CERRADA" &&
-                                  r.Estado != "Rechazada");
-                
-                if (reqPendientes)
-                    throw new GraphQLException("Candado Financiero: No puedes cerrar el proyecto porque hay Requisiciones que no han completado su ciclo completo (aprobación → compra → recibo). Todas deben estar en estado 'CERRADA'.");
+                                   r.Estado != "CERRADA" &&
+                                   r.Estado != "Rechazada");
 
-                // 2. Validar Anticipos Pendientes
+                if (reqPendientes)
+                    throw new GraphQLException("Candado Financiero: No puedes cerrar el proyecto porque hay Requisiciones que no han completado su ciclo completo.");
+
                 var antPendientes = await context.ProyectoAnticipos
-                    .AnyAsync(a => a.ProyectoId == id && 
+                    .AnyAsync(a => a.ProyectoId == id &&
                                   (a.Estado == "SOLICITADO" || a.Estado == "Por Aprobar"));
 
                 if (antPendientes)
@@ -327,15 +283,15 @@ namespace RmsErp.Api.Mutations.Tracker
                 var hoy = DateTime.UtcNow.Date;
                 var alertasCriticas = new List<string>();
 
-                // 1. SLA vencido — respuesta al cliente con más de 1 día de retraso
+                // 1. SLA vencido
                 if (proyecto.FechaRespuestaCliente.HasValue && proyecto.FechaAsignacion != default)
                 {
                     var diasSLA = (proyecto.FechaRespuestaCliente.Value.Date - proyecto.FechaAsignacion.Date).Days;
                     if (diasSLA > 1)
-                        alertasCriticas.Add($"SLA vencido — respuesta al cliente con {diasSLA} día(s) de retraso");
+                        alertasCriticas.Add($"SLA vencido — {diasSLA} día(s) de retraso (Asignación: {proyecto.FechaAsignacion.Date:dd/MM/yyyy} → Respuesta cliente: {proyecto.FechaRespuestaCliente.Value.Date:dd/MM/yyyy})");
                 }
 
-                // 2. Inicio de obra sin OC registrada
+                // 2. Inicio de obra sin OC
                 if (proyecto.FechaInicioActividades.HasValue && string.IsNullOrWhiteSpace(proyecto.NumeroOC))
                     alertasCriticas.Add("Inicio de obra registrado sin OC del cliente");
 
@@ -349,7 +305,7 @@ namespace RmsErp.Api.Mutations.Tracker
 
                 if (!alertasCriticas.Any()) return;
 
-                // Datos adicionales para el email
+                // ── Datos adicionales ─────────────────────────────────────
                 var cliente = await context.Clientes
                     .Where(c => c.Id == proyecto.ClienteId)
                     .Select(c => c.RazonSocial)
@@ -362,9 +318,54 @@ namespace RmsErp.Api.Mutations.Tracker
                         .FirstOrDefaultAsync() ?? "Sin responsable"
                     : "Sin responsable";
 
+                // ── Destinatarios dinámicos ───────────────────────────────
+
+                // 1. Usuarios con proyectos.gerente — reciben todas las alertas
+                var emailsGerentes = await context.UsuarioPermisos
+                    .Where(up => up.Permiso.Slug == "proyectos.gerente" &&
+                                 up.Usuario.Estado == "ACTIVO")
+                    .Select(up => up.Usuario.Email)
+                    .ToListAsync();
+
+                // 2. Usuarios con permiso de alerta de la división específica
+                var slugDivision = proyecto.LineaNegocio switch
+                {
+                    "civiles"            => "proyectos.civiles.alertas",
+                    "energia"            => "proyectos.energia.alertas",
+                    "telecomunicaciones" => "proyectos.telecom.alertas",
+                    _                    => null
+                };
+
+                var emailsDivision = new List<string>();
+                if (slugDivision != null)
+                {
+                    emailsDivision = await context.UsuarioPermisos
+                        .Where(up => up.Permiso.Slug == slugDivision &&
+                                     up.Usuario.Estado == "ACTIVO")
+                        .Select(up => up.Usuario.Email)
+                        .ToListAsync();
+                }
+
+                // 3. Deduplicar
+                var destinatarios = emailsGerentes
+                    .Union(emailsDivision)
+                    .Where(e => !string.IsNullOrEmpty(e))
+                    .Distinct()
+                    .ToList();
+
+                // 4. Nombre legible de la división
+                var divisionLabel = proyecto.LineaNegocio switch
+                {
+                    "civiles"            => "Construcción",
+                    "energia"            => "Energía",
+                    "telecomunicaciones" => "O&M Telecomunicaciones",
+                    _                    => proyecto.LineaNegocio
+                };
+
                 await NotificarAlertaCriticaN8n(
                     proyecto.Codigo, proyecto.Nombre, proyecto.Estado,
-                    cliente, responsable, alertasCriticas
+                    cliente, responsable, divisionLabel,
+                    alertasCriticas, destinatarios
                 );
             }
             catch (Exception ex)
@@ -375,26 +376,31 @@ namespace RmsErp.Api.Mutations.Tracker
 
         private async Task NotificarAlertaCriticaN8n(
             string codigo, string nombre, string estado,
-            string cliente, string responsable, List<string> alertas)
+            string cliente, string responsable,
+            string division, List<string> alertas, List<string> destinatarios)
         {
             try
             {
-                using var httpClient = new HttpClient();
+                if (!destinatarios.Any()) return;
+
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                 var urlWebhook = "http://erp-n8n:5678/webhook/alerta-critica-proyecto";
 
                 var payload = new
                 {
-                    codigo      = codigo,
-                    nombre      = nombre,
-                    estado      = estado,
-                    cliente     = cliente,
-                    responsable = responsable,
-                    alertas     = alertas,
-                    timestamp   = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC"
+                    codigo        = codigo,
+                    nombre        = nombre,
+                    estado        = estado,
+                    cliente       = cliente,
+                    responsable   = responsable,
+                    division      = division,
+                    alertas       = alertas,
+                    destinatarios = destinatarios,
+                    timestamp     = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC"
                 };
 
-                var json    = System.Text.Json.JsonSerializer.Serialize(payload);
-                var body    = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                var body = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
                 await httpClient.PostAsync(urlWebhook, body);
             }
             catch (Exception ex)
@@ -403,13 +409,9 @@ namespace RmsErp.Api.Mutations.Tracker
             }
         }
 
-        // La bitácora puede ser registrada por cualquier usuario con acceso
-        // a cualquiera de las tres líneas de negocio (leer es suficiente).
-        // Se usa proyectos.energia.leer como política base — el PermissionPolicyProvider
-        // acepta cualquiera de los tres slugs de línea vía la configuración OR del Program.cs.
         [Authorize(Policy = "proyectos.bitacora")]
         public async Task<ProyectoObservacion?> AddObservacion(
-            ObservacionInput input, 
+            ObservacionInput input,
             [Service] ApplicationDbContext context)
         {
             var proyecto = await context.Proyectos.FindAsync(input.ProyectoId);
@@ -417,9 +419,9 @@ namespace RmsErp.Api.Mutations.Tracker
 
             var nuevaObs = new ProyectoObservacion
             {
-                ProyectoId = input.ProyectoId,
-                UsuarioId = input.UsuarioId,
-                Observacion = input.ObservacionTexto,
+                ProyectoId    = input.ProyectoId,
+                UsuarioId     = input.UsuarioId,
+                Observacion   = input.ObservacionTexto,
                 FechaRegistro = DateTime.UtcNow
             };
 
