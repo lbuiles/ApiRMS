@@ -34,15 +34,20 @@ namespace RmsErp.Api.Models.Tracker
         // --- Fechas del Workflow ---
         public DateTime FechaAsignacion { get; set; } = DateTime.UtcNow;
         public DateTime? FechaSolicitudPermisos { get; set; }
+        public DateTime? FechaVisitaTecnica { get; set; }
         public DateTime? FechaEnvioPermiso { get; set; } // Para calcular SLA 48h
         public DateTime? FechaAprobacionPermisos { get; set; }
         public DateTime? FechaEnvioPresupuesto { get; set; }
         public DateTime? FechaAprobacionPresupuesto { get; set; }
         public DateTime? FechaInicioActividades { get; set; }
+        public DateTime? FechaTentativaFin { get; set; }  // Compromiso del colaborador
         public DateTime? FechaFinalizacionActividades { get; set; }
 
         // --- Datos Administrativos / Terceros ---
         public string? Contratista { get; set; }
+
+        // Ejecutor de obra (técnico interno de campo) — distinto del Responsable (gerente/director)
+        public Guid? EjecutorInternoId { get; set; }
         public string? Polizas { get; set; } // Ej: "Requiere", "No Requiere"
         public string? CentroDeCostos { get; set; }
 
@@ -50,6 +55,7 @@ namespace RmsErp.Api.Models.Tracker
         public bool DossierEntregado { get; set; } = false;
         public bool LiquidacionTerminada { get; set; } = false;
         public bool FacturacionCompletada { get; set; } = false;
+        public bool CierreTecnicoAprobado { get; set; } = false;
 
         // --- Financiero ---
         public string? NumeroOC { get; set; }
@@ -61,6 +67,9 @@ namespace RmsErp.Api.Models.Tracker
         
         [Column(TypeName = "decimal(18,2)")]
         public decimal ValorFacturado { get; set; } = 0;
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal CostoRealTotal { get; set; } = 0;
 
         // --- Propiedades Calculadas ---
         [NotMapped]
@@ -76,6 +85,13 @@ namespace RmsErp.Api.Models.Tracker
         [ForeignKey("ResponsableId")]
         public Usuario? Responsable { get; set; }
 
+        [ForeignKey("EjecutorInternoId")]
+        public Usuario? EjecutorInterno { get; set; }
+
         public List<ProyectoObservacion> Observaciones { get; set; } = new List<ProyectoObservacion>();
+        public List<ProyectoRequisicion> Requisiciones { get; set; } = new List<ProyectoRequisicion>();
+        public List<ProyectoOrdenTrabajo> OrdenesTrabajo { get; set; } = new List<ProyectoOrdenTrabajo>();
+        public List<ProyectoAnticipo> Anticipos { get; set; } = new List<ProyectoAnticipo>();
+        public List<ProyectoAnticipoDirecto> AnticiposDirectos { get; set; } = new List<ProyectoAnticipoDirecto>();
     }
 }
