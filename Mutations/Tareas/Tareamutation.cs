@@ -3,6 +3,7 @@ using HotChocolate.Authorization;
 using Microsoft.EntityFrameworkCore;
 using RmsErp.Api.Data;
 using RmsErp.Api.Models.Tareas;
+using RmsErp.Api.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -81,7 +82,8 @@ namespace RmsErp.Api.Mutations.Tareas
         [Authorize(Policy = "tareas.crear")]
         public async Task<Tarea> AddTarea(
             TareaInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] NotificacionHelperService notifHelper)
         {
             // Normalizar al lunes de la semana
             var lunes = ObtenerLunesDeSemana(input.SemanaProgramada);
@@ -137,6 +139,24 @@ namespace RmsErp.Api.Mutations.Tareas
 
             await context.SaveChangesAsync();
 
+            // Notificar a los usuarios asignados en la creación
+            if (input.UsuariosAsignados != null && input.UsuariosAsignados.Any())
+            {
+                var asignadosANotificar = input.UsuariosAsignados
+                    .Distinct()
+                    .Where(uid => uid != input.CreadoPorId);
+
+                foreach (var uid in asignadosANotificar)
+                {
+                    await notifHelper.CrearAsync(
+                        usuarioDestinoId: uid,
+                        tipo:             "asignacion",
+                        mensaje:          $"Te han asignado la tarea \"{tarea.Titulo}\".",
+                        entidadId:        tarea.Id
+                    );
+                }
+            }
+
             return await context.Tareas
                 .Include(t => t.Estado)
                 .Include(t => t.CreadoPor)
@@ -185,7 +205,8 @@ namespace RmsErp.Api.Mutations.Tareas
         [Authorize(Policy = "tareas.ver")]
         public async Task<Tarea?> CambiarEstadoTarea(
             CambiarEstadoInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] NotificacionHelperService notifHelper)
         {
             var tarea = await context.Tareas.FindAsync(input.TareaId);
             if (tarea == null) return null;
@@ -234,6 +255,23 @@ namespace RmsErp.Api.Mutations.Tareas
             });
 
             await context.SaveChangesAsync();
+
+            // ── Notificar a los asignados de la tarea (excepto quien hizo el cambio) ──
+            var asignados = await context.TareasAsignados
+                .Where(a => a.TareaId == input.TareaId && a.UsuarioId != input.CambiadoPorId)
+                .Select(a => a.UsuarioId)
+                .ToListAsync();
+
+            foreach (var asignadoId in asignados)
+            {
+                await notifHelper.CrearAsync(
+                    usuarioDestinoId: asignadoId,
+                    tipo:             "estado_cambiado",
+                    mensaje:          $"La tarea \"{tarea.Titulo}\" cambió al estado \"{nuevoEstado.Nombre}\".",
+                    entidadId:        input.TareaId
+                );
+            }
+            // ─────────────────────────────────────────────────────
 
             return await context.Tareas
                 .Include(t => t.Estado)
@@ -316,7 +354,8 @@ namespace RmsErp.Api.Mutations.Tareas
         [Authorize(Policy = "tareas.asignar")]
         public async Task<Tarea?> AsignarUsuarioTarea(
             AsignarUsuarioInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] NotificacionHelperService notifHelper)
         {
             var tarea = await context.Tareas.FindAsync(input.TareaId);
             if (tarea == null) return null;
@@ -335,6 +374,18 @@ namespace RmsErp.Api.Mutations.Tareas
                     FechaAsignacion = DateTime.UtcNow
                 });
                 await context.SaveChangesAsync();
+
+                // ── Notificar al usuario recién asignado ──
+                if (input.UsuarioId != input.AsignadoPorId)
+                {
+                    await notifHelper.CrearAsync(
+                        usuarioDestinoId: input.UsuarioId,
+                        tipo:             "asignacion",
+                        mensaje:          $"Te han asignado la tarea \"{tarea.Titulo}\".",
+                        entidadId:        input.TareaId
+                    );
+                }
+                // ─────────────────────────────────────────
             }
 
             return await context.Tareas
@@ -370,10 +421,29 @@ namespace RmsErp.Api.Mutations.Tareas
         [Authorize(Policy = "tareas.mover")]
         public async Task<bool> DeleteTarea(
             Guid id,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] NotificacionHelperService notifHelper)
         {
-            var tarea = await context.Tareas.FindAsync(id);
+            var tarea = await context.Tareas
+                .Include(t => t.Asignados)
+                .FirstOrDefaultAsync(t => t.Id == id);
             if (tarea == null) return false;
+
+            // Notificar a los asignados antes de eliminar
+            var asignados = tarea.Asignados
+                .Select(a => a.UsuarioId)
+                .Distinct()
+                .ToList();
+
+            foreach (var uid in asignados)
+            {
+                await notifHelper.CrearAsync(
+                    usuarioDestinoId: uid,
+                    tipo:             "eliminacion",
+                    mensaje:          $"La tarea \"{tarea.Titulo}\" ha sido eliminada.",
+                    entidadId:        null   // La tarea ya no existirá, no hay a dónde navegar
+                );
+            }
 
             context.Tareas.Remove(tarea);
             await context.SaveChangesAsync();
@@ -463,7 +533,7 @@ namespace RmsErp.Api.Mutations.Tareas
         // =========================================================
         private static DateTime ObtenerLunesDeSemana(DateTime fecha)
         {
-            var diaSemana  = (int)fecha.DayOfWeek;
+            var diaSemana   = (int)fecha.DayOfWeek;
             var diasARestar = diaSemana == 0 ? 6 : diaSemana - 1;
             return fecha.Date.AddDays(-diasARestar);
         }

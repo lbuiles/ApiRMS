@@ -61,6 +61,7 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 builder.Services.AddHttpContextAccessor();
+
 builder.Services
     .AddGraphQLServer()
     .AddQueryType(d => d.Name("Query"))
@@ -72,6 +73,7 @@ builder.Services
     .AddTypeExtension<DashboardQuery>()
     .AddTypeExtension<ContratistaProveedorQuery>()
     .AddTypeExtension<TareaQuery>()
+    .AddTypeExtension<NotificacionQuery>()          // ← NUEVO
 
     .AddMutationType(d => d.Name("Mutation"))
     .AddTypeExtension<ClienteMutation>()
@@ -84,6 +86,7 @@ builder.Services
     .AddTypeExtension<EliminarSubFlujosMutation>()
     .AddTypeExtension<ContratistaProveedorMutation>()
     .AddTypeExtension<TareaMutation>()
+    .AddTypeExtension<NotificacionMutation>()       // ← NUEVO
 
     .AddAuthorization()
     .AddProjections()
@@ -105,6 +108,10 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<IAlmacenamientoService, AlmacenamientoLocalService>();
 builder.Services.AddControllers();
 // ------------------------------------------------------------------------
+
+// --- NUEVO: Registrar NotificacionHelperService ---
+builder.Services.AddScoped<NotificacionHelperService>();
+// --------------------------------------------------
 
 var app = builder.Build();
 
