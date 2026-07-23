@@ -62,6 +62,9 @@ namespace RmsErp.Api.Data
         public DbSet<TareaMovimiento> TareasMovimientos { get; set; }
         public DbSet<TareaHistorialEstado> TareasHistorialEstados { get; set; }
 
+        // --- MÓDULO NOTIFICACIONES ---
+        public DbSet<Notificacion> Notificaciones { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -248,6 +251,24 @@ namespace RmsErp.Api.Data
                 .WithMany()
                 .HasForeignKey(h => h.CambiadoPorId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // ==========================================
+            // MÓDULO NOTIFICACIONES
+            // ==========================================
+
+            modelBuilder.Entity<Notificacion>(e =>
+            {
+                e.HasKey(n => n.Id);
+
+                // Índice para consultas frecuentes por usuario y estado de lectura
+                e.HasIndex(n => new { n.UsuarioDestinoId, n.Leida, n.FechaCreacion });
+
+                // Notificacion → Usuario (CASCADE: al eliminar usuario, se eliminan sus notificaciones)
+                e.HasOne(n => n.UsuarioDestino)
+                 .WithMany()
+                 .HasForeignKey(n => n.UsuarioDestinoId)
+                 .OnDelete(DeleteBehavior.Cascade);
+            });
         }
     }
 }
