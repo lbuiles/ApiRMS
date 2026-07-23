@@ -6,12 +6,13 @@ using RmsErp.Api.Models.Modulos;
 using RmsErp.Api.Models.Usuarios;
 using RmsErp.Api.Models.Tracker;
 using RmsErp.Api.Models.Contratistas;
+using RmsErp.Api.Models.Tareas;
 
 namespace RmsErp.Api.Data
 {
     public class ApplicationDbContext : DbContext
     {
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) 
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options) { }
 
         public DbSet<Usuario> Usuarios { get; set; }
@@ -37,7 +38,7 @@ namespace RmsErp.Api.Data
         public DbSet<ClienteRegion> ClientesRegiones { get; set; }
         public DbSet<Proyecto> Proyectos { get; set; }
         public DbSet<ProyectoObservacion> ProyectoObservaciones { get; set; }
-        
+
         public DbSet<CategoriaProyecto> ProyectosCategorias { get; set; }
 
         // --- NUEVAS TABLAS DEL TRACKER ---
@@ -52,6 +53,14 @@ namespace RmsErp.Api.Data
         public DbSet<CPCuentaBancaria> CPCuentasBancarias { get; set; }
         public DbSet<CPReferencia> CPReferencias { get; set; }
         public DbSet<CPDocumento> CPDocumentos { get; set; }
+
+        // --- MÓDULO TAREAS ---
+        public DbSet<EstadoTarea> TareasEstados { get; set; }
+        public DbSet<Tarea> Tareas { get; set; }
+        public DbSet<TareaAsignado> TareasAsignados { get; set; }
+        public DbSet<TareaComentario> TareasComentarios { get; set; }
+        public DbSet<TareaMovimiento> TareasMovimientos { get; set; }
+        public DbSet<TareaHistorialEstado> TareasHistorialEstados { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -143,7 +152,102 @@ namespace RmsErp.Api.Data
                 .HasOne(a => a.Proyecto)
                 .WithMany(p => p.Anticipos)
                 .HasForeignKey(a => a.ProyectoId)
-                .OnDelete(DeleteBehavior.NoAction); 
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // ==========================================
+            // MÓDULO TAREAS
+            // ==========================================
+
+            // Clave compuesta de TareaAsignado
+            modelBuilder.Entity<TareaAsignado>()
+                .HasKey(ta => new { ta.TareaId, ta.UsuarioId });
+
+            // Tarea → Estado (Restrict para no eliminar estado con tareas activas)
+            modelBuilder.Entity<Tarea>()
+                .HasOne(t => t.Estado)
+                .WithMany(e => e.Tareas)
+                .HasForeignKey(t => t.EstadoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Tarea → CreadoPor (Restrict, evitar ciclo de cascadas con Usuarios)
+            modelBuilder.Entity<Tarea>()
+                .HasOne(t => t.CreadoPor)
+                .WithMany()
+                .HasForeignKey(t => t.CreadoPorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // TareaAsignado → Tarea (CASCADE: al eliminar tarea, se eliminan asignados)
+            modelBuilder.Entity<TareaAsignado>()
+                .HasOne(ta => ta.Tarea)
+                .WithMany(t => t.Asignados)
+                .HasForeignKey(ta => ta.TareaId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // TareaAsignado → Usuario (Restrict, evitar ciclo de cascadas con Usuarios)
+            modelBuilder.Entity<TareaAsignado>()
+                .HasOne(ta => ta.Usuario)
+                .WithMany()
+                .HasForeignKey(ta => ta.UsuarioId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<TareaAsignado>()
+                .HasOne(ta => ta.AsignadoPor)
+                .WithMany()
+                .HasForeignKey(ta => ta.AsignadoPorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // TareaComentario → Tarea (CASCADE)
+            modelBuilder.Entity<TareaComentario>()
+                .HasOne(tc => tc.Tarea)
+                .WithMany(t => t.Comentarios)
+                .HasForeignKey(tc => tc.TareaId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<TareaComentario>()
+                .HasOne(tc => tc.Usuario)
+                .WithMany()
+                .HasForeignKey(tc => tc.UsuarioId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // TareaMovimiento → Tarea (CASCADE)
+            modelBuilder.Entity<TareaMovimiento>()
+                .HasOne(tm => tm.Tarea)
+                .WithMany(t => t.Movimientos)
+                .HasForeignKey(tm => tm.TareaId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<TareaMovimiento>()
+                .HasOne(tm => tm.MovidoPor)
+                .WithMany()
+                .HasForeignKey(tm => tm.MovidoPorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // TareaHistorialEstado → Tarea (CASCADE)
+            modelBuilder.Entity<TareaHistorialEstado>()
+                .HasOne(h => h.Tarea)
+                .WithMany(t => t.HistorialEstados)
+                .HasForeignKey(h => h.TareaId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Historial → EstadoAnterior (Restrict, puede ser null en la creación inicial)
+            modelBuilder.Entity<TareaHistorialEstado>()
+                .HasOne(h => h.EstadoAnterior)
+                .WithMany()
+                .HasForeignKey(h => h.EstadoAnteriorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Historial → EstadoNuevo (Restrict)
+            modelBuilder.Entity<TareaHistorialEstado>()
+                .HasOne(h => h.EstadoNuevo)
+                .WithMany()
+                .HasForeignKey(h => h.EstadoNuevoId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<TareaHistorialEstado>()
+                .HasOne(h => h.CambiadoPor)
+                .WithMany()
+                .HasForeignKey(h => h.CambiadoPorId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }
