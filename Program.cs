@@ -6,7 +6,7 @@ using RmsErp.Api.Mutations;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using RmsErp.Api.Security; 
+using RmsErp.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 using RmsErp.Api.Queries.Clientes;
 using RmsErp.Api.Queries.Usuarios;
@@ -19,12 +19,14 @@ using RmsErp.Api.Queries.Tracker;
 using RmsErp.Api.Mutations.Tracker;
 using RmsErp.Api.Queries.Contratistas;
 using RmsErp.Api.Mutations.Contratistas;
+using RmsErp.Api.Queries.Tareas;
+using RmsErp.Api.Mutations.Tareas;
 
-// --- NUEVO: Usings necesarios para los archivos y el servicio ---
-using RmsErp.Api.Services; 
+// --- Usings necesarios para los archivos y el servicio ---
+using RmsErp.Api.Services;
 using Microsoft.Extensions.FileProviders;
 using System.IO;
-// -----------------------------------------------------------------
+// ----------------------------------------------------------
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,7 +52,7 @@ builder.Services.AddScoped<IClaimsTransformation, ClaimsTransformer>();
 
 builder.Services.AddAuthorization(options =>
 {
-    options.FallbackPolicy = null; 
+    options.FallbackPolicy = null;
 
     options.DefaultPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
@@ -58,7 +60,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
-
+builder.Services.AddHttpContextAccessor();
 builder.Services
     .AddGraphQLServer()
     .AddQueryType(d => d.Name("Query"))
@@ -69,7 +71,8 @@ builder.Services
     .AddTypeExtension<SubFlujosQuery>()
     .AddTypeExtension<DashboardQuery>()
     .AddTypeExtension<ContratistaProveedorQuery>()
-    
+    .AddTypeExtension<TareaQuery>()
+
     .AddMutationType(d => d.Name("Mutation"))
     .AddTypeExtension<ClienteMutation>()
     .AddTypeExtension<UsuarioMutation>()
@@ -80,7 +83,8 @@ builder.Services
     .AddTypeExtension<AnticipoDirectoMutation>()
     .AddTypeExtension<EliminarSubFlujosMutation>()
     .AddTypeExtension<ContratistaProveedorMutation>()
-    
+    .AddTypeExtension<TareaMutation>()
+
     .AddAuthorization()
     .AddProjections()
     .AddFiltering()
@@ -90,21 +94,21 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:4200", "https://rmscolombia.com") 
+        policy.WithOrigins("http://localhost:4200", "https://rmscolombia.com")
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials(); 
+              .AllowCredentials();
     });
 });
 
-// --- NUEVO: Registrar el servicio de Almacenamiento y los Controladores REST ---
+// --- Registrar el servicio de Almacenamiento y los Controladores REST ---
 builder.Services.AddScoped<IAlmacenamientoService, AlmacenamientoLocalService>();
 builder.Services.AddControllers();
-// ------------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 var app = builder.Build();
 
-// --- NUEVO: Configuración para servir la carpeta 'uploads' localmente ---
+// --- Configuración para servir la carpeta 'uploads' localmente ---
 var uploadsPath = System.IO.Path.Combine(builder.Environment.ContentRootPath, "uploads");
 if (!Directory.Exists(uploadsPath))
 {
@@ -116,18 +120,18 @@ app.UseStaticFiles(new StaticFileOptions
     FileProvider = new PhysicalFileProvider(uploadsPath),
     RequestPath = "/uploads"
 });
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------
 
 app.UseRouting();
-app.UseCors(); 
+app.UseCors();
 
-app.UseAuthentication(); 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGraphQL("/graphql");
 
-// --- NUEVO: Mapear los endpoints REST (nuestro UploadController) ---
+// --- Mapear los endpoints REST (UploadController) ---
 app.MapControllers();
-// -------------------------------------------------------------------
+// -----------------------------------------------------
 
 app.Run();
