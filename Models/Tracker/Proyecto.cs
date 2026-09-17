@@ -39,8 +39,9 @@ namespace RmsErp.Api.Models.Tracker
         public DateTime? FechaAprobacionPermisos { get; set; }
         public DateTime? FechaEnvioPresupuesto { get; set; }
         public DateTime? FechaAprobacionPresupuesto { get; set; }
-        public DateTime? FechaInicioActividades { get; set; }
-        public DateTime? FechaTentativaFin { get; set; }  // Compromiso del colaborador
+        public DateTime? FechaInicioActividades { get; set; }    // Autorización de inicio (gestión)
+        public DateTime? FechaInicioObra { get; set; }           // Inicio físico real en sitio
+        public DateTime? FechaTentativaFin { get; set; }         // Compromiso del colaborador
         public DateTime? FechaFinalizacionActividades { get; set; }
 
         // --- Datos Administrativos / Terceros ---

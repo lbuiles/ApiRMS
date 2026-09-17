@@ -37,6 +37,7 @@ namespace RmsErp.Api.Mutations.Tracker
         DateTime? FechaEnvioPresupuesto,
         DateTime? FechaAprobacionPresupuesto,
         DateTime? FechaInicioActividades,
+        DateTime? FechaInicioObra,
         DateTime? FechaTentativaFin,
         DateTime? FechaFinalizacionActividades,
 
@@ -132,8 +133,9 @@ namespace RmsErp.Api.Mutations.Tracker
             proyecto.FechaAprobacionPermisos    = input.FechaAprobacionPermisos;
             proyecto.FechaEnvioPresupuesto      = input.FechaEnvioPresupuesto;
             proyecto.FechaAprobacionPresupuesto = input.FechaAprobacionPresupuesto;
-            proyecto.FechaInicioActividades     = input.FechaInicioActividades;
-            proyecto.FechaTentativaFin          = input.FechaTentativaFin;
+            proyecto.FechaInicioActividades       = input.FechaInicioActividades;
+            proyecto.FechaInicioObra              = input.FechaInicioObra;
+            proyecto.FechaTentativaFin            = input.FechaTentativaFin;
             proyecto.FechaFinalizacionActividades = input.FechaFinalizacionActividades;
 
             // ==========================================
@@ -148,14 +150,8 @@ namespace RmsErp.Api.Mutations.Tracker
                     throw new GraphQLException("Bloqueo Financiero: El 'Total Facturado' no puede ser 0.");
             }
 
-            if (input.LiquidacionTerminada && !proyecto.FechaFinalizacionActividades.HasValue)
-                throw new GraphQLException("Bloqueo Operativo: No puedes liquidar al contratista si las actividades no han finalizado.");
-
-            if (input.DossierEntregado && !proyecto.FechaFinalizacionActividades.HasValue)
-                throw new GraphQLException("Bloqueo Operativo: No puedes entregar el Dossier si las actividades no han finalizado.");
-
-            if (input.LiquidacionTerminada && !proyecto.CierreTecnicoAprobado)
-                throw new GraphQLException("Secuencia inválida: No puedes marcar la liquidación como terminada si el 'Cierre Técnico en Terreno' no ha sido aprobado primero.");
+            // Cierres administrativos independientes — no requieren fecha de fin de obra
+            // (Solicitado por Jaime Rojas: los ítems documentales pueden cerrarse en paralelo)
 
             // ==========================================
             // 3. MÁQUINA DE ESTADOS AUTOMÁTICA
@@ -173,11 +169,8 @@ namespace RmsErp.Api.Mutations.Tracker
             }
             else if (proyecto.FechaFinalizacionActividades.HasValue)
             {
-                if (!proyecto.FechaInicioActividades.HasValue)
-                    throw new GraphQLException("Secuencia inválida: No puedes registrar la fecha de fin de actividades sin haber registrado una fecha de inicio.");
-
-                if (proyecto.FechaFinalizacionActividades.Value < proyecto.FechaInicioActividades.Value)
-                    throw new GraphQLException("Secuencia inválida: La fecha de finalización no puede ser anterior a la fecha de inicio.");
+                // Validación de secuencia flexible: se registra aunque no tenga inicio formal
+                // (puede haberse iniciado sin autorización digital)
 
                 var otsBorrador = await context.ProyectoOrdenesTrabajo
                     .AnyAsync(ot => ot.ProyectoId == id && ot.Estado == "Borrador" && ot.TecnicoInternoId == null);
@@ -204,9 +197,7 @@ namespace RmsErp.Api.Mutations.Tracker
             }
             else if (proyecto.FechaInicioActividades.HasValue)
             {
-                if (string.IsNullOrWhiteSpace(input.Polizas) || input.Polizas == "Requiere - Pendiente")
-                    throw new GraphQLException("Requisito previo: Debes definir y aprobar el estado de las pólizas antes de autorizar el inicio de actividades en terreno.");
-
+                // Pólizas: ya no bloquean el inicio — se registran como advertencia en el tracker
                 proyecto.Estado = "EN_EJECUCIÓN";
             }
             else if (!string.IsNullOrWhiteSpace(input.CentroDeCostos) ||
