@@ -51,5 +51,17 @@ namespace RmsErp.Api.Queries.Tracker
         {
             return context.ProyectoAnticipos;
         }
+
+        // ==========================================
+        // 4. CORTES DE FACTURACIÓN (Financiero / Ingresos)
+        // ==========================================
+        [Authorize(Policy = "proyectos.leer")]
+        [UseProjection]
+        [UseFiltering]
+        [UseSorting]
+        public IQueryable<ProyectoCorteFacturacion> GetCortesFacturacion([Service] ApplicationDbContext context)
+        {
+            return context.ProyectoCortesFacturacion;
+        }
     }
 }

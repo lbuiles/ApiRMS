@@ -404,19 +404,27 @@ namespace RmsErp.Api.Mutations.Tracker
             var proyecto = await context.Proyectos.FindAsync(proyectoId);
             if (proyecto == null) return;
 
-            // 1. Sumamos Requisiciones (Oficializadas)
-            var totalRequisiciones = await context.ProyectoRequisiciones
-                .Where(r => r.ProyectoId == proyectoId && r.Estado != "Por Aprobar Supervisor" && r.Estado != "Rechazado")
-                .SumAsync(r => r.ValorEstimado);
+            // NOTA (solicitado en revisión — Jaime Rojas / documentos de retroalimentación):
+            // Gastos REQ (ValorGasto) y Costos OTs (CostoRealTotal) son 100% manuales
+            // "mientras se unifican los requerimientos de requisiciones y OT's" con el área
+            // administrativa. Este motor YA NO los sincroniza automáticamente desde las
+            // Requisiciones/OTs reales — el usuario los edita directamente en el panel
+            // Control PO (UpdateProyecto). Si en el futuro se reactiva el módulo real de
+            // OT/REQ, este es el lugar para restaurar la sincronización automática.
 
-            // 2. Sumamos Órdenes de Trabajo (Que ya no son borrador)
-            var totalOTs = await context.ProyectoOrdenesTrabajo
-                .Where(ot => ot.ProyectoId == proyectoId && ot.Estado != "Borrador")
-                .SumAsync(ot => ot.ValorTotal);
-
-            // 3. Sincronizamos con la tabla principal
-            proyecto.ValorGasto = totalRequisiciones; // Gastos de materiales/compras
-            proyecto.CostoRealTotal = totalOTs;       // Costos de mano de obra/contratistas
+            // Facturación: si el proyecto tiene Cortes de Facturación registrados,
+            //    el valor facturado se calcula automáticamente a partir de ellos.
+            //    Si NO tiene cortes (proyecto de facturación única), el campo
+            //    ValorFacturado se mantiene editable manualmente y no se toca aquí.
+            var tieneCortes = await context.ProyectoCortesFacturacion
+                .AnyAsync(cf => cf.ProyectoId == proyectoId);
+            if (tieneCortes)
+            {
+                var totalCortes = await context.ProyectoCortesFacturacion
+                    .Where(cf => cf.ProyectoId == proyectoId && cf.Estado != "ANULADO")
+                    .SumAsync(cf => cf.ValorCorte);
+                proyecto.ValorFacturado = totalCortes;
+            }
 
             await context.SaveChangesAsync();
         }
@@ -478,6 +486,14 @@ namespace RmsErp.Api.Mutations.Tracker
         string IdEgresoWorldOffice
     );
 
+    public record CorteFacturacionInput(
+        Guid ProyectoId,
+        Guid RegistradoPorId,
+        decimal ValorCorte,
+        string? NumeroFactura,
+        string? Observaciones
+    );
+
     [ExtendObjectType("Mutation")]
     public class AnticipoDirectoMutation
     {
@@ -503,7 +519,11 @@ namespace RmsErp.Api.Mutations.Tracker
 
             context.ProyectoAnticiposDirectos.Add(anticipo);
             await context.SaveChangesAsync();
-            return anticipo;
+
+            // Recargar con Solicitante incluido para que el frontend reciba el nombre de inmediato
+            return await context.ProyectoAnticiposDirectos
+                .Include(a => a.Solicitante)
+                .FirstOrDefaultAsync(a => a.Id == anticipo.Id) ?? anticipo;
         }
 
         [Authorize(Policy = "proyectos.fase.administrativa")]
@@ -547,6 +567,72 @@ namespace RmsErp.Api.Mutations.Tracker
             if (anticipo == null) return false;
             anticipo.Estado = "RECHAZADO";
             await context.SaveChangesAsync();
+            return true;
+        }
+    }
+
+    [ExtendObjectType("Mutation")]
+    public class CorteFacturacionMutation
+    {
+        [Authorize(Policy = "proyectos.fase.administrativa")]
+        public async Task<ProyectoCorteFacturacion> AddCorteFacturacion(
+            CorteFacturacionInput input,
+            [Service] ApplicationDbContext context)
+        {
+            var proyecto = await context.Proyectos.FindAsync(input.ProyectoId);
+            if (proyecto == null)
+                throw new GraphQLException("Proyecto no encontrado.");
+
+            if (input.ValorCorte <= 0)
+                throw new GraphQLException("El valor del corte de facturación debe ser mayor a cero.");
+
+            var corte = new ProyectoCorteFacturacion
+            {
+                ProyectoId      = input.ProyectoId,
+                RegistradoPorId = input.RegistradoPorId,
+                ValorCorte      = input.ValorCorte,
+                NumeroFactura   = input.NumeroFactura,
+                Observaciones   = input.Observaciones,
+                Estado          = "REGISTRADO"
+            };
+
+            context.ProyectoCortesFacturacion.Add(corte);
+            await context.SaveChangesAsync();
+
+            // Auto-acumulación: recalculamos el Valor Facturado total del proyecto
+            var totalCortes = await context.ProyectoCortesFacturacion
+                .Where(cf => cf.ProyectoId == input.ProyectoId && cf.Estado != "ANULADO")
+                .SumAsync(cf => cf.ValorCorte);
+            proyecto.ValorFacturado = totalCortes;
+            await context.SaveChangesAsync();
+
+            // Recargar con RegistradoPor incluido para que el frontend reciba el nombre de inmediato
+            return await context.ProyectoCortesFacturacion
+                .Include(c => c.RegistradoPor)
+                .FirstOrDefaultAsync(c => c.Id == corte.Id) ?? corte;
+        }
+
+        [Authorize(Policy = "proyectos.fase.administrativa")]
+        public async Task<bool> AnularCorteFacturacion(
+            Guid id,
+            [Service] ApplicationDbContext context)
+        {
+            var corte = await context.ProyectoCortesFacturacion.FindAsync(id);
+            if (corte == null) throw new GraphQLException("Corte de facturación no encontrado.");
+
+            corte.Estado = "ANULADO";
+            await context.SaveChangesAsync();
+
+            var proyecto = await context.Proyectos.FindAsync(corte.ProyectoId);
+            if (proyecto != null)
+            {
+                var totalCortes = await context.ProyectoCortesFacturacion
+                    .Where(cf => cf.ProyectoId == corte.ProyectoId && cf.Estado != "ANULADO")
+                    .SumAsync(cf => cf.ValorCorte);
+                proyecto.ValorFacturado = totalCortes;
+                await context.SaveChangesAsync();
+            }
+
             return true;
         }
     }
@@ -616,6 +702,37 @@ namespace RmsErp.Api.Mutations.Tracker
 
             context.ProyectoAnticiposDirectos.Remove(ant);
             await context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> EliminarCorteFacturacion(
+            Guid id,
+            [Service] ApplicationDbContext context)
+        {
+            var corte = await context.ProyectoCortesFacturacion
+                .Include(c => c.Proyecto)
+                .FirstOrDefaultAsync(c => c.Id == id);
+
+            if (corte == null)
+                throw new GraphQLException("Corte de facturación no encontrado.");
+
+            if (EstadosCerrados.Contains(corte.Proyecto?.Estado))
+                throw new GraphQLException("No se puede eliminar un corte de facturación de un proyecto cerrado.");
+
+            var proyectoId = corte.ProyectoId;
+            context.ProyectoCortesFacturacion.Remove(corte);
+            await context.SaveChangesAsync();
+
+            var proyecto = await context.Proyectos.FindAsync(proyectoId);
+            if (proyecto != null)
+            {
+                var totalCortes = await context.ProyectoCortesFacturacion
+                    .Where(cf => cf.ProyectoId == proyectoId && cf.Estado != "ANULADO")
+                    .SumAsync(cf => cf.ValorCorte);
+                proyecto.ValorFacturado = totalCortes;
+                await context.SaveChangesAsync();
+            }
+
             return true;
         }
     }
