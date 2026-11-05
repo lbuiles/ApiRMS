@@ -39,8 +39,9 @@ namespace RmsErp.Api.Models.Tracker
         public DateTime? FechaAprobacionPermisos { get; set; }
         public DateTime? FechaEnvioPresupuesto { get; set; }
         public DateTime? FechaAprobacionPresupuesto { get; set; }
-        public DateTime? FechaInicioActividades { get; set; }
-        public DateTime? FechaTentativaFin { get; set; }  // Compromiso del colaborador
+        public DateTime? FechaInicioActividades { get; set; }    // Autorización de inicio (gestión)
+        public DateTime? FechaInicioObra { get; set; }           // Inicio físico real en sitio
+        public DateTime? FechaTentativaFin { get; set; }         // Compromiso del colaborador
         public DateTime? FechaFinalizacionActividades { get; set; }
 
         // --- Datos Administrativos / Terceros ---
@@ -73,10 +74,23 @@ namespace RmsErp.Api.Models.Tracker
 
         // --- Propiedades Calculadas ---
         [NotMapped]
-        public decimal Utilidad => ValorFacturado - ValorGasto;
+        // Punto 13 (semana 38/39): la utilidad debe descontar TAMBIEN los
+        // Costos de OTs (CostoRealTotal), no solo los Gastos REQ (ValorGasto).
+        // Antes esta fórmula no incluía CostoRealTotal, por lo que el Panel de
+        // Control (Dashboard) mostraba una utilidad distinta (más alta) que la
+        // que se ve correctamente calculada dentro de cada proyecto (Control PO).
+        public decimal Utilidad => ValorFacturado - ValorGasto - CostoRealTotal;
         
         [NotMapped]
         public decimal PorcentajeAvanceFinanciero => ValorOC > 0 ? (ValorFacturado / ValorOC) * 100 : 0;
+
+        // --- Archivado / Eliminación lógica ---
+        public bool Archivado { get; set; } = false;
+        public DateTime? FechaArchivado { get; set; }
+        public Guid? ArchivadoPorId { get; set; }
+
+        [ForeignKey("ArchivadoPorId")]
+        public Usuario? ArchivadoPor { get; set; }
 
         // --- Relaciones de Navegación ---
         [ForeignKey("ClienteId")]
@@ -93,5 +107,6 @@ namespace RmsErp.Api.Models.Tracker
         public List<ProyectoOrdenTrabajo> OrdenesTrabajo { get; set; } = new List<ProyectoOrdenTrabajo>();
         public List<ProyectoAnticipo> Anticipos { get; set; } = new List<ProyectoAnticipo>();
         public List<ProyectoAnticipoDirecto> AnticiposDirectos { get; set; } = new List<ProyectoAnticipoDirecto>();
+        public List<ProyectoCorteFacturacion> CortesFacturacion { get; set; } = new List<ProyectoCorteFacturacion>();
     }
 }

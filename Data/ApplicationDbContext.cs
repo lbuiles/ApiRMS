@@ -46,6 +46,7 @@ namespace RmsErp.Api.Data
         public DbSet<ProyectoOrdenTrabajo> ProyectoOrdenesTrabajo { get; set; }
         public DbSet<ProyectoAnticipo> ProyectoAnticipos { get; set; }
         public DbSet<ProyectoAnticipoDirecto> ProyectoAnticiposDirectos { get; set; }
+        public DbSet<ProyectoCorteFacturacion> ProyectoCortesFacturacion { get; set; }
 
         // --- MÓDULO CONTRATISTAS Y PROVEEDORES ---
         public DbSet<ContratistaProveedor> ContratistaProveedores { get; set; }
@@ -155,6 +156,13 @@ namespace RmsErp.Api.Data
                 .HasOne(a => a.Proyecto)
                 .WithMany(p => p.Anticipos)
                 .HasForeignKey(a => a.ProyectoId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // Cortes de Facturación -> Proyectos (Evitar ciclos en SQL Server)
+            modelBuilder.Entity<ProyectoCorteFacturacion>()
+                .HasOne(c => c.Proyecto)
+                .WithMany(p => p.CortesFacturacion)
+                .HasForeignKey(c => c.ProyectoId)
                 .OnDelete(DeleteBehavior.NoAction);
 
             // ==========================================

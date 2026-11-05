@@ -83,6 +83,7 @@ builder.Services
     .AddTypeExtension<ProyectoMutation>()
     .AddTypeExtension<SubFlujosMutation>()
     .AddTypeExtension<AnticipoDirectoMutation>()
+    .AddTypeExtension<CorteFacturacionMutation>()
     .AddTypeExtension<EliminarSubFlujosMutation>()
     .AddTypeExtension<ContratistaProveedorMutation>()
     .AddTypeExtension<TareaMutation>()

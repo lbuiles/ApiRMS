@@ -4,6 +4,7 @@ using HotChocolate.Authorization;
 using System;
 using System.Threading.Tasks;
 using RmsErp.Api.Models.Tracker;
+using RmsErp.Api.Models.Clientes;
 using Microsoft.EntityFrameworkCore;
 
 namespace RmsErp.Api.Mutations.Tracker
@@ -13,7 +14,8 @@ namespace RmsErp.Api.Mutations.Tracker
         string LineaNegocio,
         string Codigo,
         string Nombre,
-        Guid ClienteId,
+        Guid? ClienteId,
+        string? ClienteNombre,
         string? SupervisorCliente,
         Guid? ResponsableId,
         decimal ValorOC,
@@ -37,6 +39,7 @@ namespace RmsErp.Api.Mutations.Tracker
         DateTime? FechaEnvioPresupuesto,
         DateTime? FechaAprobacionPresupuesto,
         DateTime? FechaInicioActividades,
+        DateTime? FechaInicioObra,
         DateTime? FechaTentativaFin,
         DateTime? FechaFinalizacionActividades,
 
@@ -71,12 +74,53 @@ namespace RmsErp.Api.Mutations.Tracker
             ProyectoInput input,
             [Service] ApplicationDbContext context)
         {
+            // ─── Resolver ClienteId ───────────────────────────────────────────────
+            // El Angular puede enviar el UUID (selector) o un nombre libre (texto libre).
+            // En modo texto libre, ClienteId llega nulo y ClienteNombre trae la razón social.
+            Guid resolvedClienteId;
+
+            if (input.ClienteId.HasValue && input.ClienteId.Value != Guid.Empty)
+            {
+                resolvedClienteId = input.ClienteId.Value;
+            }
+            else if (!string.IsNullOrWhiteSpace(input.ClienteNombre))
+            {
+                var nombre = input.ClienteNombre.Trim();
+
+                // Buscar cliente existente por RazonSocial (insensible a mayúsculas)
+                var clienteExistente = await context.Clientes
+                    .FirstOrDefaultAsync(c => c.RazonSocial.ToLower() == nombre.ToLower());
+
+                if (clienteExistente != null)
+                {
+                    resolvedClienteId = clienteExistente.Id;
+                }
+                else
+                {
+                    // Crear cliente mínimo con el nombre provisto
+                    var nuevoCliente = new Cliente
+                    {
+                        RazonSocial      = nombre,
+                        Nit              = "N/A",
+                        UsuarioCreacion  = "SISTEMA"
+                    };
+                    context.Clientes.Add(nuevoCliente);
+                    await context.SaveChangesAsync();
+                    resolvedClienteId = nuevoCliente.Id;
+                }
+            }
+            else
+            {
+                throw new GraphQLException("Se requiere clienteId o clienteNombre para crear un proyecto.");
+            }
+            // ─────────────────────────────────────────────────────────────────────
+
             var nuevoProyecto = new Proyecto
             {
                 LineaNegocio         = input.LineaNegocio,
                 Codigo               = input.Codigo,
                 Nombre               = input.Nombre,
-                ClienteId            = input.ClienteId,
+                ClienteId            = resolvedClienteId,
                 SupervisorCliente    = input.SupervisorCliente,
                 ResponsableId        = input.ResponsableId,
                 ValorOC              = input.ValorOC,
@@ -88,6 +132,28 @@ namespace RmsErp.Api.Mutations.Tracker
             context.Proyectos.Add(nuevoProyecto);
             await context.SaveChangesAsync();
             return nuevoProyecto;
+        }
+
+        /// <summary>
+        /// Actualiza únicamente el Nombre del proyecto, sin depender de la validez
+        /// del resto de ProyectoUpdateInput (usado por el botón rápido "Editable"
+        /// en Identificación del Proyecto). Requiere el mismo permiso que editar.
+        /// </summary>
+        [Authorize(Policy = "proyectos.editar")]
+        public async Task<Proyecto?> ActualizarNombreProyecto(
+            Guid id,
+            string nombre,
+            [Service] ApplicationDbContext context)
+        {
+            if (string.IsNullOrWhiteSpace(nombre))
+                throw new GraphQLException("El nombre del proyecto no puede quedar vacío.");
+
+            var proyecto = await context.Proyectos.FindAsync(id);
+            if (proyecto == null) return null;
+
+            proyecto.Nombre = nombre.Trim();
+            await context.SaveChangesAsync();
+            return proyecto;
         }
 
         [Authorize(Policy = "proyectos.editar")]
@@ -114,9 +180,9 @@ namespace RmsErp.Api.Mutations.Tracker
             proyecto.ValorOC              = input.ValorOC;
             proyecto.ValorFacturado       = input.ValorFacturado;
 
-            // ELIMINADO INTENCIONALMENTE PARA RESPETAR LA ÚNICA FUENTE DE VERDAD:
-            // proyecto.ValorGasto = input.ValorGasto;
-            // proyecto.CostoRealTotal = input.CostoRealTotal;
+            // Gastos REQ y Costos OTs editables manualmente (solicitado en revisión)
+            proyecto.ValorGasto     = input.ValorGasto;
+            proyecto.CostoRealTotal = input.CostoRealTotal;
 
             // Checklists de cierre
             proyecto.DossierEntregado       = input.DossierEntregado;
@@ -132,8 +198,9 @@ namespace RmsErp.Api.Mutations.Tracker
             proyecto.FechaAprobacionPermisos    = input.FechaAprobacionPermisos;
             proyecto.FechaEnvioPresupuesto      = input.FechaEnvioPresupuesto;
             proyecto.FechaAprobacionPresupuesto = input.FechaAprobacionPresupuesto;
-            proyecto.FechaInicioActividades     = input.FechaInicioActividades;
-            proyecto.FechaTentativaFin          = input.FechaTentativaFin;
+            proyecto.FechaInicioActividades       = input.FechaInicioActividades;
+            proyecto.FechaInicioObra              = input.FechaInicioObra;
+            proyecto.FechaTentativaFin            = input.FechaTentativaFin;
             proyecto.FechaFinalizacionActividades = input.FechaFinalizacionActividades;
 
             // ==========================================
@@ -148,14 +215,8 @@ namespace RmsErp.Api.Mutations.Tracker
                     throw new GraphQLException("Bloqueo Financiero: El 'Total Facturado' no puede ser 0.");
             }
 
-            if (input.LiquidacionTerminada && !proyecto.FechaFinalizacionActividades.HasValue)
-                throw new GraphQLException("Bloqueo Operativo: No puedes liquidar al contratista si las actividades no han finalizado.");
-
-            if (input.DossierEntregado && !proyecto.FechaFinalizacionActividades.HasValue)
-                throw new GraphQLException("Bloqueo Operativo: No puedes entregar el Dossier si las actividades no han finalizado.");
-
-            if (input.LiquidacionTerminada && !proyecto.CierreTecnicoAprobado)
-                throw new GraphQLException("Secuencia inválida: No puedes marcar la liquidación como terminada si el 'Cierre Técnico en Terreno' no ha sido aprobado primero.");
+            // Cierres administrativos independientes — no requieren fecha de fin de obra
+            // (Solicitado por Jaime Rojas: los ítems documentales pueden cerrarse en paralelo)
 
             // ==========================================
             // 3. MÁQUINA DE ESTADOS AUTOMÁTICA
@@ -173,11 +234,8 @@ namespace RmsErp.Api.Mutations.Tracker
             }
             else if (proyecto.FechaFinalizacionActividades.HasValue)
             {
-                if (!proyecto.FechaInicioActividades.HasValue)
-                    throw new GraphQLException("Secuencia inválida: No puedes registrar la fecha de fin de actividades sin haber registrado una fecha de inicio.");
-
-                if (proyecto.FechaFinalizacionActividades.Value < proyecto.FechaInicioActividades.Value)
-                    throw new GraphQLException("Secuencia inválida: La fecha de finalización no puede ser anterior a la fecha de inicio.");
+                // Validación de secuencia flexible: se registra aunque no tenga inicio formal
+                // (puede haberse iniciado sin autorización digital)
 
                 var otsBorrador = await context.ProyectoOrdenesTrabajo
                     .AnyAsync(ot => ot.ProyectoId == id && ot.Estado == "Borrador" && ot.TecnicoInternoId == null);
@@ -204,9 +262,7 @@ namespace RmsErp.Api.Mutations.Tracker
             }
             else if (proyecto.FechaInicioActividades.HasValue)
             {
-                if (string.IsNullOrWhiteSpace(input.Polizas) || input.Polizas == "Requiere - Pendiente")
-                    throw new GraphQLException("Requisito previo: Debes definir y aprobar el estado de las pólizas antes de autorizar el inicio de actividades en terreno.");
-
+                // Pólizas: ya no bloquean el inicio — se registran como advertencia en el tracker
                 proyecto.Estado = "EN_EJECUCIÓN";
             }
             else if (!string.IsNullOrWhiteSpace(input.CentroDeCostos) ||
@@ -427,7 +483,91 @@ namespace RmsErp.Api.Mutations.Tracker
 
             context.ProyectoObservaciones.Add(nuevaObs);
             await context.SaveChangesAsync();
-            return nuevaObs;
+
+            // Recargar con el Usuario incluido — nuevaObs.Usuario nunca se asigna
+            // explícitamente al crear, y sin este Include el campo puede llegar
+            // nulo al frontend (mostrando "Usuario" en vez del nombre real).
+            return await context.ProyectoObservaciones
+                .Include(o => o.Usuario)
+                .FirstOrDefaultAsync(o => o.Id == nuevaObs.Id);
+        }
+
+        // ==========================================
+        // ARCHIVAR / REACTIVAR / ELIMINAR (punto 17)
+        // ==========================================
+
+        /// <summary>
+        /// Archiva (anula) un proyecto sin perder su historial. Es la operación
+        /// por defecto para "quitar" un proyecto de la vista activa.
+        /// </summary>
+        [Authorize(Policy = "proyectos.borrar")]
+        public async Task<Proyecto?> ArchivarProyecto(
+            Guid id,
+            Guid usuarioId,
+            [Service] ApplicationDbContext context)
+        {
+            var proyecto = await context.Proyectos.FindAsync(id);
+            if (proyecto == null) return null;
+
+            proyecto.Archivado = true;
+            proyecto.FechaArchivado = DateTime.UtcNow;
+            proyecto.ArchivadoPorId = usuarioId;
+
+            await context.SaveChangesAsync();
+            return proyecto;
+        }
+
+        /// <summary>
+        /// Reactiva un proyecto previamente archivado.
+        /// </summary>
+        [Authorize(Policy = "proyectos.borrar")]
+        public async Task<Proyecto?> ReactivarProyecto(
+            Guid id,
+            [Service] ApplicationDbContext context)
+        {
+            var proyecto = await context.Proyectos.FindAsync(id);
+            if (proyecto == null) return null;
+
+            proyecto.Archivado = false;
+            proyecto.FechaArchivado = null;
+            proyecto.ArchivadoPorId = null;
+
+            await context.SaveChangesAsync();
+            return proyecto;
+        }
+
+        /// <summary>
+        /// Elimina definitivamente un proyecto. Solo permitido si no tiene
+        /// ningún movimiento asociado (OTs, Requisiciones, Anticipos, Anticipos
+        /// Directos, facturación o costos registrados) — para proyectos creados
+        /// por error. En cualquier otro caso, se debe usar ArchivarProyecto.
+        /// </summary>
+        [Authorize(Policy = "proyectos.borrar")]
+        public async Task<bool> EliminarProyectoDefinitivo(
+            Guid id,
+            [Service] ApplicationDbContext context)
+        {
+            var proyecto = await context.Proyectos.FindAsync(id);
+            if (proyecto == null) return false;
+
+            var tieneOTs           = await context.ProyectoOrdenesTrabajo.AnyAsync(o => o.ProyectoId == id);
+            var tieneRequisiciones = await context.ProyectoRequisiciones.AnyAsync(r => r.ProyectoId == id);
+            var tieneAnticipos     = await context.ProyectoAnticipos.AnyAsync(a => a.ProyectoId == id);
+            var tieneAnticiposDir  = await context.ProyectoAnticiposDirectos.AnyAsync(a => a.ProyectoId == id);
+            var tieneCortesFacturacion = await context.ProyectoCortesFacturacion.AnyAsync(cf => cf.ProyectoId == id);
+            var tieneMovimientosFinancieros =
+                proyecto.ValorFacturado != 0 || proyecto.ValorGasto != 0 || proyecto.CostoRealTotal != 0;
+
+            if (tieneOTs || tieneRequisiciones || tieneAnticipos || tieneAnticiposDir || tieneCortesFacturacion || tieneMovimientosFinancieros)
+            {
+                throw new GraphQLException(
+                    "Este proyecto ya tiene movimientos asociados (OTs, requisiciones, anticipos o valores financieros). " +
+                    "No se puede eliminar definitivamente — solo se puede archivar.");
+            }
+
+            context.Proyectos.Remove(proyecto);
+            await context.SaveChangesAsync();
+            return true;
         }
     }
 }
