@@ -7,6 +7,7 @@ using RmsErp.Api.Models.Usuarios;
 using RmsErp.Api.Models.Tracker;
 using RmsErp.Api.Models.Contratistas;
 using RmsErp.Api.Models.Tareas;
+using RmsErp.Api.Models.Cuadrillas;
 
 namespace RmsErp.Api.Data
 {
@@ -65,9 +66,61 @@ namespace RmsErp.Api.Data
         // --- MÓDULO NOTIFICACIONES ---
         public DbSet<Notificacion> Notificaciones { get; set; }
 
+        // --- Módulo Cuadrillas (submenú de Proyectos) ---
+        public DbSet<Cuadrilla> Cuadrillas { get; set; }
+        public DbSet<CuadrillaMiembro> CuadrillasMiembros { get; set; }
+        public DbSet<CuadrillaActividad> CuadrillasActividades { get; set; }
+        public DbSet<CuadrillaActividadHistorial> CuadrillasActividadHistorial { get; set; }
+        public DbSet<CuadrillaCompensatorio> CuadrillasCompensatorios { get; set; }
+        public DbSet<CuadrillaConfigHoras> CuadrillasConfigHoras { get; set; }
+        public DbSet<CuadrillaFestivo> CuadrillasFestivos { get; set; }
+        public DbSet<CuadrillaParametro> CuadrillasParametros { get; set; }
+        public DbSet<CuadrillaDiaImproductivo> CuadrillasDiasImproductivos { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // ==========================================
+            // MÓDULO CUADRILLAS
+            // (las tablas se crean con script SQL manual: sql_cuadrillas_fase1.sql)
+            // ==========================================
+            modelBuilder.Entity<CuadrillaMiembro>(e =>
+            {
+                e.HasKey(m => new { m.CuadrillaId, m.UsuarioId });
+                e.HasOne(m => m.Cuadrilla).WithMany(c => c.Miembros)
+                 .HasForeignKey(m => m.CuadrillaId).OnDelete(DeleteBehavior.Cascade);
+                e.HasOne(m => m.Usuario).WithMany()
+                 .HasForeignKey(m => m.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CuadrillaActividad>(e =>
+            {
+                e.HasOne(a => a.Tecnico).WithMany().HasForeignKey(a => a.TecnicoId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(a => a.Cuadrilla).WithMany().HasForeignKey(a => a.CuadrillaId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(a => a.Proyecto).WithMany().HasForeignKey(a => a.ProyectoId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(a => a.SupervisorContacto).WithMany().HasForeignKey(a => a.SupervisorContactoId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(a => a.SupervisorUsuario).WithMany().HasForeignKey(a => a.SupervisorUsuarioId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(a => a.Creador).WithMany().HasForeignKey(a => a.CreadoPorId).OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(a => a.ActualizadoPor).WithMany().HasForeignKey(a => a.ActualizadoPorId).OnDelete(DeleteBehavior.Restrict);
+                e.HasMany(a => a.Historial).WithOne().HasForeignKey(h => h.ActividadId).OnDelete(DeleteBehavior.Cascade);
+                e.HasIndex(a => new { a.TecnicoId, a.Fecha });
+            });
+
+            modelBuilder.Entity<CuadrillaActividadHistorial>()
+                .HasOne(h => h.Usuario).WithMany().HasForeignKey(h => h.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CuadrillaCompensatorio>()
+                .HasOne(x => x.Tecnico).WithMany().HasForeignKey(x => x.TecnicoId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CuadrillaConfigHoras>()
+                .HasOne(x => x.Tecnico).WithMany().HasForeignKey(x => x.TecnicoId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<CuadrillaDiaImproductivo>(e =>
+            {
+                e.HasOne(x => x.Tecnico).WithMany().HasForeignKey(x => x.TecnicoId).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(x => new { x.TecnicoId, x.Fecha }).IsUnique();
+            });
 
             // --- Configuraciones de CategoriaProyecto ---
             modelBuilder.Entity<CategoriaProyecto>()
