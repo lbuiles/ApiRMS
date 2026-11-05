@@ -198,10 +198,9 @@ namespace RmsErp.Api.Queries.Cuadrillas
         public async Task<List<CuadrillaProyectoOpcionDto>> GetCuadrillaProyectosDisponibles(
             [Service] ApplicationDbContext context)
         {
-            // TODO (al unir la rama Ajustes-tracker-jaime): agregar && !p.Archivado
             return await context.Proyectos
                 .AsNoTracking()
-                .Where(p => p.Estado != "FINALIZADO_TOTAL" && p.Estado != "Cancelado" && p.Estado != "Incumplimiento")
+                .Where(p => !p.Archivado && p.Estado != "FINALIZADO_TOTAL" && p.Estado != "Cancelado" && p.Estado != "Incumplimiento")
                 .OrderBy(p => p.Codigo)
                 .Select(p => new CuadrillaProyectoOpcionDto
                 {
