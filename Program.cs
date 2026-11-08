@@ -21,6 +21,8 @@ using RmsErp.Api.Queries.Contratistas;
 using RmsErp.Api.Mutations.Contratistas;
 using RmsErp.Api.Queries.Tareas;
 using RmsErp.Api.Mutations.Tareas;
+using RmsErp.Api.Queries.Cuadrillas;
+using RmsErp.Api.Mutations.Cuadrillas;
 
 // --- Usings necesarios para los archivos y el servicio ---
 using RmsErp.Api.Services;
@@ -73,7 +75,8 @@ builder.Services
     .AddTypeExtension<DashboardQuery>()
     .AddTypeExtension<ContratistaProveedorQuery>()
     .AddTypeExtension<TareaQuery>()
-    .AddTypeExtension<NotificacionQuery>()          // ← NUEVO
+    .AddTypeExtension<NotificacionQuery>()
+    .AddTypeExtension<CuadrillaQuery>()          // ← NUEVO
 
     .AddMutationType(d => d.Name("Mutation"))
     .AddTypeExtension<ClienteMutation>()
@@ -87,7 +90,8 @@ builder.Services
     .AddTypeExtension<EliminarSubFlujosMutation>()
     .AddTypeExtension<ContratistaProveedorMutation>()
     .AddTypeExtension<TareaMutation>()
-    .AddTypeExtension<NotificacionMutation>()       // ← NUEVO
+    .AddTypeExtension<NotificacionMutation>()
+    .AddTypeExtension<CuadrillaMutation>()       // ← NUEVO
 
     .AddAuthorization()
     .AddProjections()
@@ -112,6 +116,7 @@ builder.Services.AddControllers();
 
 // --- NUEVO: Registrar NotificacionHelperService ---
 builder.Services.AddScoped<NotificacionHelperService>();
+builder.Services.AddScoped<CuadrillaKpiService>();
 // --------------------------------------------------
 
 var app = builder.Build();
