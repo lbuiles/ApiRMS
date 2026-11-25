@@ -530,6 +530,7 @@ namespace RmsErp.Api.Mutations.Cuadrillas
         [Authorize(Policy = "proyectos.cuadrillas.config")]
         public async Task<CuadrillaParametrosDto> GuardarCuadrillaParametros(
             int diasMaxRetroactivo,
+            double? horasLibresAlerta,
             [Service] ApplicationDbContext context,
             [Service] IHttpContextAccessor http)
         {
@@ -550,8 +551,24 @@ namespace RmsErp.Api.Mutations.Cuadrillas
             fila.ActualizadoEn = DateTime.UtcNow;
             fila.ActualizadoPorId = usuarioId;
 
+            if (horasLibresAlerta.HasValue)
+            {
+                if (horasLibresAlerta.Value < 0.25 || horasLibresAlerta.Value > 12)
+                    throw new GraphQLException("Las horas libres para alertar deben estar entre 0.25 y 12.");
+                var filaHoras = await context.CuadrillasParametros
+                    .FirstOrDefaultAsync(p => p.Clave == CuadrillaReglas.ParamHorasLibresAlerta);
+                if (filaHoras == null)
+                {
+                    filaHoras = new CuadrillaParametro { Clave = CuadrillaReglas.ParamHorasLibresAlerta };
+                    context.CuadrillasParametros.Add(filaHoras);
+                }
+                filaHoras.Valor = Math.Round(horasLibresAlerta.Value, 2).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                filaHoras.ActualizadoEn = DateTime.UtcNow;
+                filaHoras.ActualizadoPorId = usuarioId;
+            }
+
             await context.SaveChangesAsync();
-            return new CuadrillaParametrosDto(diasMaxRetroactivo);
+            return new CuadrillaParametrosDto(diasMaxRetroactivo, await CuadrillaReglas.HorasLibresAlertaAsync(context));
         }
 
         // ---------------------------------------------------------
@@ -850,7 +867,9 @@ namespace RmsErp.Api.Mutations.Cuadrillas
             }
 
             // --- Proyecto / sede / línea de negocio ---
-            string? linea = Limpiar(i.LineaNegocio, 50);
+            string? linea = Limpiar(i.LineaNegocio, 50)?.ToLowerInvariant();
+            if (linea != null && !CuadrillaReglas.Areas.Contains(linea))
+                throw new GraphQLException("El área seleccionada no es válida.");
             var referencia = Limpiar(i.ProyectoReferencia, 150);
             Guid? clienteIdProyecto = null;
 

@@ -96,6 +96,33 @@ namespace RmsErp.Api.Services
         public const int DiasRetroactivoDefecto = 7;
 
         /// <summary>Días hacia atrás que quien programa puede crear/editar/eliminar sin permiso de configuración.</summary>
+        // ---- Áreas (se guardan en CuadrillaActividad.LineaNegocio) ----
+        // energia = ENERGÍA, telecomunicaciones = O&M, civiles = CONSTRUCCIÓN, rms = RMS (interno)
+        public static readonly string[] Areas = { "energia", "telecomunicaciones", "civiles", "rms" };
+
+        public static string AreaEtiqueta(string? area) => (area ?? "").ToLowerInvariant() switch
+        {
+            "energia" => "ENERGÍA",
+            "telecomunicaciones" => "O&M",
+            "civiles" => "CONSTRUCCIÓN",
+            "rms" => "RMS",
+            _ => ""
+        };
+
+        // ---- Alerta de tiempo libre: horas libres mínimas en la jornada para alertar ----
+        public const string ParamHorasLibresAlerta = "HorasLibresAlerta";
+        public const double HorasLibresAlertaDefecto = 1.0;
+
+        public static async Task<double> HorasLibresAlertaAsync(ApplicationDbContext context)
+        {
+            var valor = await context.CuadrillasParametros.AsNoTracking()
+                .Where(p => p.Clave == ParamHorasLibresAlerta)
+                .Select(p => p.Valor)
+                .FirstOrDefaultAsync();
+            return double.TryParse(valor, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var n) && n > 0
+                ? n : HorasLibresAlertaDefecto;
+        }
+
         public static async Task<int> DiasRetroactivoAsync(ApplicationDbContext context)
         {
             var valor = await context.CuadrillasParametros.AsNoTracking()

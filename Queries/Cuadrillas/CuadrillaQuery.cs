@@ -28,6 +28,7 @@ namespace RmsErp.Api.Queries.Cuadrillas
         public string Codigo { get; set; } = string.Empty;
         public string Nombre { get; set; } = string.Empty;
         public string LineaNegocio { get; set; } = string.Empty;
+        public string Estado { get; set; } = string.Empty;
         public Guid ClienteId { get; set; }
         public string ClienteNombre { get; set; } = string.Empty;
         public string? SupervisorCliente { get; set; }
@@ -51,8 +52,13 @@ namespace RmsErp.Api.Queries.Cuadrillas
 
     public class CuadrillaParametrosDto
     {
-        public CuadrillaParametrosDto(int diasMaxRetroactivo) { DiasMaxRetroactivo = diasMaxRetroactivo; }
+        public CuadrillaParametrosDto(int diasMaxRetroactivo, double horasLibresAlerta = CuadrillaReglas.HorasLibresAlertaDefecto)
+        {
+            DiasMaxRetroactivo = diasMaxRetroactivo;
+            HorasLibresAlerta = horasLibresAlerta;
+        }
         public int DiasMaxRetroactivo { get; set; }
+        public double HorasLibresAlerta { get; set; }
     }
 
     public class CuadrillaCompensatorioDto
@@ -200,14 +206,17 @@ namespace RmsErp.Api.Queries.Cuadrillas
         {
             return await context.Proyectos
                 .AsNoTracking()
-                .Where(p => !p.Archivado && p.Estado != "FINALIZADO_TOTAL" && p.Estado != "Cancelado" && p.Estado != "Incumplimiento")
-                .OrderBy(p => p.Codigo)
+                // Se incluyen los finalizados (garantías / visitas posteriores); se excluyen archivados, cancelados e incumplidos
+                .Where(p => !p.Archivado && p.Estado != "Cancelado" && p.Estado != "Incumplimiento")
+                .OrderBy(p => p.Estado == "FINALIZADO_TOTAL")
+                .ThenBy(p => p.Codigo)
                 .Select(p => new CuadrillaProyectoOpcionDto
                 {
                     Id = p.Id,
                     Codigo = p.Codigo,
                     Nombre = p.Nombre,
                     LineaNegocio = p.LineaNegocio,
+                    Estado = p.Estado,
                     ClienteId = p.ClienteId,
                     ClienteNombre = p.Cliente != null ? p.Cliente.RazonSocial : string.Empty,
                     SupervisorCliente = p.SupervisorCliente
@@ -343,7 +352,21 @@ namespace RmsErp.Api.Queries.Cuadrillas
         [Authorize(Policy = "proyectos.cuadrillas.ver")]
         public async Task<CuadrillaParametrosDto> GetCuadrillaParametros([Service] ApplicationDbContext context)
         {
-            return new CuadrillaParametrosDto(await CuadrillaReglas.DiasRetroactivoAsync(context));
+            return new CuadrillaParametrosDto(
+                await CuadrillaReglas.DiasRetroactivoAsync(context),
+                await CuadrillaReglas.HorasLibresAlertaAsync(context));
+        }
+
+        // ---------------------------------------------------------
+        // Alertas de programación (vencidas, bloqueadas, cruces, sin asignación, disponibilidad)
+        // ---------------------------------------------------------
+        [Authorize(Policy = "proyectos.cuadrillas.programar")]
+        public async Task<CuadrillaAlertasResult> GetCuadrillaAlertas(
+            DateTime desde,
+            DateTime hasta,
+            [Service] CuadrillaKpiService kpi)
+        {
+            return await kpi.AlertasAsync(desde, hasta);
         }
 
         [Authorize(Policy = "proyectos.cuadrillas.programar")]
