@@ -54,6 +54,33 @@ namespace RmsErp.Api.Services
         public CuadrillaKpiBloque Resultado { get; set; } = new CuadrillaKpiBloque();
     }
 
+    /// <summary>
+    /// Alerta de programación.
+    /// Tipo: VENCIDA | BLOQUEADA | CRUCE | SIN_ASIGNACION | DISPONIBLE | TIEMPO_LIBRE
+    /// </summary>
+    public class CuadrillaAlertaDto
+    {
+        public string Tipo { get; set; } = string.Empty;
+        public DateTime Fecha { get; set; }
+        public Guid TecnicoId { get; set; }
+        public string TecnicoNombre { get; set; } = string.Empty;
+        public Guid? ActividadId { get; set; }
+        public string? Proyecto { get; set; }
+        public string? Actividad { get; set; }
+        public double? HorasProgramadas { get; set; }
+        public double? Jornada { get; set; }
+        public double? HorasLibres { get; set; }
+        public string Detalle { get; set; } = string.Empty;
+    }
+
+    public class CuadrillaAlertasResult
+    {
+        public DateTime Desde { get; set; }
+        public DateTime Hasta { get; set; }
+        public double UmbralHorasLibres { get; set; }
+        public List<CuadrillaAlertaDto> Alertas { get; set; } = new List<CuadrillaAlertaDto>();
+    }
+
     public class CuadrillaKpiResult
     {
         public DateTime Desde { get; set; }
@@ -163,6 +190,161 @@ namespace RmsErp.Api.Services
                 PorTecnico = porTecnico,
                 DiasImproductivos = dias.OrderBy(d => d.Fecha).ThenBy(d => d.TecnicoNombre).ToList(),
                 Notas = notas
+            };
+        }
+
+        /// <summary>
+        /// Alertas de la programación en el rango [desde, hasta] (por defecto la semana actual y la siguiente):
+        ///  - SIN_ASIGNACION: día laboral sin ningún registro del técnico.
+        ///  - DISPONIBLE: día laboral con registro "Disponible" y sin actividad operativa.
+        ///  - TIEMPO_LIBRE: jornada (horas semanales / días laborales del técnico) menos horas programadas
+        ///                  efectivas >= umbral configurable (parámetro HorasLibresAlerta).
+        ///  - CRUCE: actividades del mismo técnico y día con horario traslapado.
+        ///  - VENCIDA: fecha anterior a hoy y no finalizada (últimos 60 días).
+        ///  - BLOQUEADA: actividad en estado Bloqueada (últimos 60 días hasta el fin del rango).
+        /// Los días con permiso/descanso o justificados manualmente no generan alertas de asignación.
+        /// </summary>
+        public async Task<CuadrillaAlertasResult> AlertasAsync(DateTime desde, DateTime hasta)
+        {
+            desde = desde.Date;
+            hasta = hasta.Date;
+            if (hasta < desde) throw new GraphQLException("El rango de fechas no es válido.");
+            if ((hasta - desde).TotalDays > 62) throw new GraphQLException("El rango máximo para las alertas es de 62 días.");
+
+            var hoy = CuadrillaReglas.HoyColombia();
+            var umbral = await CuadrillaReglas.HorasLibresAlertaAsync(_db);
+            var inicioHistorial = hoy.AddDays(-60);
+            var consultaDesde = desde < inicioHistorial ? desde : inicioHistorial;
+
+            // Técnicos activos de cuadrillas activas + los que tienen registros en el rango
+            var miembros = await _db.CuadrillasMiembros
+                .Where(m => m.Cuadrilla != null && m.Cuadrilla.Activa)
+                .Select(m => m.UsuarioId).Distinct().ToListAsync();
+            var conRegistros = await _db.CuadrillasActividades
+                .Where(a => a.Fecha >= desde && a.Fecha <= hasta)
+                .Select(a => a.TecnicoId).Distinct().ToListAsync();
+            var candidatos = miembros.Union(conRegistros).ToList();
+            var nombres = await _db.Usuarios
+                .Where(u => candidatos.Contains(u.Id) && u.Estado == "ACTIVO")
+                .ToDictionaryAsync(u => u.Id, u => u.Nombre);
+            var tecnicos = nombres.Keys.ToList();
+
+            var acts = await _db.CuadrillasActividades.AsNoTracking()
+                .Include(a => a.Proyecto)
+                .Where(a => a.Fecha >= consultaDesde && a.Fecha <= hasta && tecnicos.Contains(a.TecnicoId))
+                .ToListAsync();
+
+            var manuales = await _db.CuadrillasDiasImproductivos.AsNoTracking()
+                .Where(d => d.Fecha >= desde && d.Fecha <= hasta && tecnicos.Contains(d.TecnicoId) && d.Tipo == "JUSTIFICADO")
+                .Select(d => new { d.TecnicoId, d.Fecha })
+                .ToListAsync();
+            var justificados = manuales.Select(m => $"{m.TecnicoId}|{m.Fecha:yyyyMMdd}").ToHashSet();
+
+            var festivos = (await _db.CuadrillasFestivos.AsNoTracking()
+                .Where(f => f.Fecha >= desde && f.Fecha <= hasta)
+                .Select(f => f.Fecha).ToListAsync())
+                .Select(f => f.Date).ToHashSet();
+
+            var configs = await _db.CuadrillasConfigHoras.AsNoTracking().ToListAsync();
+
+            string NombreProyecto(CuadrillaActividad a) =>
+                a.Proyecto != null ? $"{a.Proyecto.Codigo} · {a.Proyecto.Nombre}" : (a.ProyectoReferencia ?? "");
+            string Nombre(Guid t) => nombres.TryGetValue(t, out var n) ? n : "(técnico)";
+
+            var alertas = new List<CuadrillaAlertaDto>();
+
+            // --- Vencidas y bloqueadas ---
+            foreach (var a in acts.Where(CuadrillaReglas.EsOperativa))
+            {
+                if (a.Fecha.Date < hoy && a.Estado != "Finalizada" && a.Estado != "Reprogramada")
+                    alertas.Add(new CuadrillaAlertaDto
+                    {
+                        Tipo = "VENCIDA", Fecha = a.Fecha.Date, TecnicoId = a.TecnicoId, TecnicoNombre = Nombre(a.TecnicoId),
+                        ActividadId = a.Id, Proyecto = NombreProyecto(a), Actividad = a.Actividad,
+                        Detalle = $"Estado: {a.Estado}"
+                    });
+                if (a.Estado == "Bloqueada")
+                    alertas.Add(new CuadrillaAlertaDto
+                    {
+                        Tipo = "BLOQUEADA", Fecha = a.Fecha.Date, TecnicoId = a.TecnicoId, TecnicoNombre = Nombre(a.TecnicoId),
+                        ActividadId = a.Id, Proyecto = NombreProyecto(a), Actividad = a.Actividad,
+                        Detalle = a.DetalleBloqueo ?? "Sin detalle del bloqueo"
+                    });
+            }
+
+            // --- Cruces, sin asignación, disponibles y tiempo libre (por técnico y día del rango) ---
+            var delRango = acts.Where(a => a.Fecha >= desde && a.Fecha <= hasta).ToList();
+            foreach (var t in tecnicos)
+            {
+                var mias = delRango.Where(a => a.TecnicoId == t).ToList();
+                for (var d = desde; d <= hasta; d = d.AddDays(1))
+                {
+                    var delDia = mias.Where(a => a.Fecha.Date == d && a.EstadoPlanificacion != "Cancelada").ToList();
+                    var ops = delDia.Where(CuadrillaReglas.EsOperativa).ToList();
+
+                    // Cruces de horario
+                    var conHorario = ops.Where(a => CuadrillaReglas.Minutos(a.HoraInicio) != null && CuadrillaReglas.Minutos(a.HoraFin) != null).ToList();
+                    for (var i = 0; i < conHorario.Count; i++)
+                        for (var j = i + 1; j < conHorario.Count; j++)
+                        {
+                            var x = conHorario[i]; var y = conHorario[j];
+                            if (CuadrillaReglas.Minutos(x.HoraInicio) < CuadrillaReglas.Minutos(y.HoraFin) &&
+                                CuadrillaReglas.Minutos(y.HoraInicio) < CuadrillaReglas.Minutos(x.HoraFin))
+                                alertas.Add(new CuadrillaAlertaDto
+                                {
+                                    Tipo = "CRUCE", Fecha = d, TecnicoId = t, TecnicoNombre = Nombre(t),
+                                    ActividadId = x.Id, Proyecto = NombreProyecto(x), Actividad = x.Actividad,
+                                    Detalle = $"{x.HoraInicio}–{x.HoraFin} se cruza con {y.HoraInicio}–{y.HoraFin} ({y.Actividad})"
+                                });
+                        }
+
+                    // Jornada laboral del técnico
+                    var (horasDia, diasLab) = ConfigPara(configs, t, d);
+                    var laboral = d.DayOfWeek != DayOfWeek.Sunday
+                                  && !festivos.Contains(d)
+                                  && (diasLab == 6 || d.DayOfWeek != DayOfWeek.Saturday);
+                    if (!laboral) continue;
+                    if (delDia.Any(a => a.TipoRegistro == "Permiso" || a.TipoRegistro == "Descanso")) continue;
+                    if (justificados.Contains($"{t}|{d:yyyyMMdd}")) continue;
+
+                    var jornada = Math.Round(horasDia, 2);
+                    if (ops.Count == 0)
+                    {
+                        var disponible = delDia.FirstOrDefault(a => a.TipoRegistro == "Disponible");
+                        alertas.Add(new CuadrillaAlertaDto
+                        {
+                            Tipo = disponible != null ? "DISPONIBLE" : "SIN_ASIGNACION",
+                            Fecha = d, TecnicoId = t, TecnicoNombre = Nombre(t),
+                            ActividadId = disponible?.Id,
+                            HorasProgramadas = 0, Jornada = jornada, HorasLibres = jornada,
+                            Detalle = disponible != null ? "Disponible sin asignación" : "Sin actividades programadas en la jornada"
+                        });
+                        continue;
+                    }
+
+                    var programadas = Math.Round(ops.Sum(a => CuadrillaReglas.HorasPlaneadasEfectivas(a)), 2);
+                    var libres = Math.Round(horasDia - programadas, 2);
+                    if (libres >= umbral - 0.001)
+                        alertas.Add(new CuadrillaAlertaDto
+                        {
+                            Tipo = "TIEMPO_LIBRE", Fecha = d, TecnicoId = t, TecnicoNombre = Nombre(t),
+                            HorasProgramadas = programadas, Jornada = jornada, HorasLibres = libres,
+                            Detalle = $"{libres:0.#} h libres de {jornada:0.#} h de jornada ({programadas:0.#} h programadas)"
+                        });
+                }
+            }
+
+            var orden = new[] { "VENCIDA", "BLOQUEADA", "CRUCE", "SIN_ASIGNACION", "DISPONIBLE", "TIEMPO_LIBRE" };
+            return new CuadrillaAlertasResult
+            {
+                Desde = desde,
+                Hasta = hasta,
+                UmbralHorasLibres = umbral,
+                Alertas = alertas
+                    .OrderBy(a => Array.IndexOf(orden, a.Tipo))
+                    .ThenBy(a => a.Fecha)
+                    .ThenBy(a => a.TecnicoNombre)
+                    .ToList()
             };
         }
 

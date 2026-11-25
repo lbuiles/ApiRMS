@@ -78,7 +78,7 @@ namespace RmsErp.Api.Controllers
         {
             var enc = new[]
             {
-                "Fecha", "Técnico", "Cuadrilla", "Tipo", "Proyecto / sede", "Línea", "Actividad", "OT",
+                "Fecha", "Técnico", "Cuadrilla", "Tipo", "Proyecto / sede", "Área", "Actividad", "OT",
                 "Inicio", "Fin", "H. planeadas", "H. reales", "Prioridad", "Estado", "Planificación",
                 "Supervisor", "Novedad", "Detalle bloqueo", "Siguiente acción", "Observaciones"
             };
@@ -90,7 +90,7 @@ namespace RmsErp.Api.Controllers
                 var proyecto = a.Proyecto != null ? $"{a.Proyecto.Codigo} · {a.Proyecto.Nombre}" : a.ProyectoReferencia;
                 var valores = new object?[]
                 {
-                    a.Fecha.Date, a.Tecnico?.Nombre, a.Cuadrilla?.Nombre, a.TipoRegistro, proyecto, a.LineaNegocio,
+                    a.Fecha.Date, a.Tecnico?.Nombre, a.Cuadrilla?.Nombre, a.TipoRegistro, proyecto, CuadrillaReglas.AreaEtiqueta(a.LineaNegocio),
                     a.Actividad, a.OT, a.HoraInicio, a.HoraFin, a.HorasPlaneadas, a.HorasReales, a.Prioridad,
                     a.Estado, a.EstadoPlanificacion, a.SupervisorNombre, a.TipoNovedad, a.DetalleBloqueo,
                     a.SiguienteAccion, a.Observaciones
