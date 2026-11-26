@@ -1,5 +1,7 @@
 using HotChocolate;
+using Microsoft.AspNetCore.Http;
 using RmsErp.Api.Data;
+using RmsErp.Api.Services;
 using HotChocolate.Authorization;
 using System;
 using System.Threading.Tasks;
@@ -143,8 +145,12 @@ namespace RmsErp.Api.Mutations.Tracker
         public async Task<Proyecto?> ActualizarNombreProyecto(
             Guid id,
             string nombre,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, id);
+
             if (string.IsNullOrWhiteSpace(nombre))
                 throw new GraphQLException("El nombre del proyecto no puede quedar vacío.");
 
@@ -160,8 +166,13 @@ namespace RmsErp.Api.Mutations.Tracker
         public async Task<Proyecto?> UpdateProyecto(
             Guid id,
             ProyectoUpdateInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, id);
+            await ProyectoAcceso.ValidarCambioResponsableAsync(context, http, id, input.ResponsableId);
+
             var proyecto = await context.Proyectos.FindAsync(id);
             if (proyecto == null) return null;
 
@@ -468,8 +479,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.bitacora")]
         public async Task<ProyectoObservacion?> AddObservacion(
             ObservacionInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, input.ProyectoId);
+
             var proyecto = await context.Proyectos.FindAsync(input.ProyectoId);
             if (proyecto == null) return null;
 
@@ -504,8 +519,12 @@ namespace RmsErp.Api.Mutations.Tracker
         public async Task<Proyecto?> ArchivarProyecto(
             Guid id,
             Guid usuarioId,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, id);
+
             var proyecto = await context.Proyectos.FindAsync(id);
             if (proyecto == null) return null;
 
@@ -523,8 +542,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.borrar")]
         public async Task<Proyecto?> ReactivarProyecto(
             Guid id,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, id);
+
             var proyecto = await context.Proyectos.FindAsync(id);
             if (proyecto == null) return null;
 
@@ -545,8 +568,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.borrar")]
         public async Task<bool> EliminarProyectoDefinitivo(
             Guid id,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            ProyectoAcceso.ValidarGerente(http);
+
             var proyecto = await context.Proyectos.FindAsync(id);
             if (proyecto == null) return false;
 

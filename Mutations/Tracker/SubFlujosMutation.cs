@@ -1,5 +1,7 @@
 using HotChocolate;
+using Microsoft.AspNetCore.Http;
 using RmsErp.Api.Data;
+using RmsErp.Api.Services;
 using HotChocolate.Authorization;
 using System;
 using System.Threading.Tasks;
@@ -73,8 +75,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.editar")]
         public async Task<ProyectoRequisicion> AddRequisicion(
             RequisicionInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, input.ProyectoId);
+
             // Sin candado de estado — disponible en cualquier etapa del proyecto
             var proyecto = await context.Proyectos.FindAsync(input.ProyectoId);
             if (proyecto == null)
@@ -117,8 +123,12 @@ namespace RmsErp.Api.Mutations.Tracker
         public async Task<ProyectoRequisicion> AprobarRequisicion(
             Guid id,
             Guid aprobadorId,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarRequisicionAsync(context, http, id);
+
             var req = await context.ProyectoRequisiciones.FindAsync(id);
             if (req == null) throw new GraphQLException("Requisición no encontrada.");
 
@@ -178,8 +188,12 @@ namespace RmsErp.Api.Mutations.Tracker
         public async Task<ProyectoRequisicion> DespachoInternoRequisicion(
             Guid id,
             Guid aprobadorId,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarRequisicionAsync(context, http, id);
+
             var req = await context.ProyectoRequisiciones.FindAsync(id);
             if (req == null) throw new GraphQLException("Requisición no encontrada.");
 
@@ -198,8 +212,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.editar")]
         public async Task<ProyectoRequisicion> ComprarRequisicion(
             ComprarRequisicionInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarRequisicionAsync(context, http, input.RequisicionId);
+
             var req = await context.ProyectoRequisiciones.FindAsync(input.RequisicionId);
             if (req == null) throw new GraphQLException("Requisición no encontrada.");
 
@@ -225,8 +243,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.editar")]
         public async Task<ProyectoRequisicion> RecibirRequisicion(
             RecibirRequisicionInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarRequisicionAsync(context, http, input.RequisicionId);
+
             var req = await context.ProyectoRequisiciones.FindAsync(input.RequisicionId);
             if (req == null) throw new GraphQLException("Requisición no encontrada.");
 
@@ -251,8 +273,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.editar")]
         public async Task<ProyectoOrdenTrabajo> AddOrdenTrabajo(
             OrdenTrabajoInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, input.ProyectoId);
+
             // Candado 0: el proyecto debe estar en ejecución
             var proyecto = await context.Proyectos.FindAsync(input.ProyectoId);
             if (proyecto == null)
@@ -301,8 +327,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.editar")]
         public async Task<ProyectoAnticipo> AddAnticipo(
             AnticipoInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarOrdenTrabajoAsync(context, http, input.OrdenTrabajoId);
+
             // 1. Verificamos que la OT exista
             var ot = await context.ProyectoOrdenesTrabajo.FindAsync(input.OrdenTrabajoId);
             if (ot == null) 
@@ -381,8 +411,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.fase.administrativa")] 
         public async Task<ProyectoAnticipo> PagarAnticipo(
             PagarAnticipoInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarAnticipoAsync(context, http, input.AnticipoId);
+
             var anticipo = await context.ProyectoAnticipos.FindAsync(input.AnticipoId);
             if (anticipo == null) throw new GraphQLException("Anticipo no encontrado.");
 
@@ -501,8 +535,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.fase.operativa")]
         public async Task<ProyectoAnticipoDirecto> AddAnticipoDirecto(
             AnticipoDirectoInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, input.ProyectoId);
+
             var proyecto = await context.Proyectos.FindAsync(input.ProyectoId);
             if (proyecto == null)
                 throw new GraphQLException("Proyecto no encontrado.");
@@ -530,8 +568,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.fase.administrativa")]
         public async Task<ProyectoAnticipoDirecto> AprobarAnticipoDirecto(
             AprobarAnticipoDirectoInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarAnticipoDirectoAsync(context, http, input.AnticipoId);
+
             var anticipo = await context.ProyectoAnticiposDirectos.FindAsync(input.AnticipoId);
             if (anticipo == null) throw new GraphQLException("Anticipo no encontrado.");
 
@@ -546,8 +588,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.fase.administrativa")]
         public async Task<ProyectoAnticipoDirecto> PagarAnticipoDirecto(
             PagarAnticipoDirectoInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarAnticipoDirectoAsync(context, http, input.AnticipoId);
+
             var anticipo = await context.ProyectoAnticiposDirectos.FindAsync(input.AnticipoId);
             if (anticipo == null) throw new GraphQLException("Anticipo no encontrado.");
 
@@ -562,8 +608,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.fase.administrativa")]
         public async Task<bool> RechazarAnticipoDirecto(
             Guid id,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarAnticipoDirectoAsync(context, http, id);
+
             var anticipo = await context.ProyectoAnticiposDirectos.FindAsync(id);
             if (anticipo == null) return false;
             anticipo.Estado = "RECHAZADO";
@@ -578,8 +628,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.fase.administrativa")]
         public async Task<ProyectoCorteFacturacion> AddCorteFacturacion(
             CorteFacturacionInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, input.ProyectoId);
+
             var proyecto = await context.Proyectos.FindAsync(input.ProyectoId);
             if (proyecto == null)
                 throw new GraphQLException("Proyecto no encontrado.");
@@ -616,8 +670,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.fase.administrativa")]
         public async Task<bool> AnularCorteFacturacion(
             Guid id,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarCorteAsync(context, http, id);
+
             var corte = await context.ProyectoCortesFacturacion.FindAsync(id);
             if (corte == null) throw new GraphQLException("Corte de facturación no encontrado.");
 
@@ -652,8 +710,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.editar")]
         public async Task<bool> EliminarOrdenTrabajo(
             Guid id,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarOrdenTrabajoAsync(context, http, id);
+
             var ot = await context.ProyectoOrdenesTrabajo
                 .Include(o => o.Proyecto)
                 .FirstOrDefaultAsync(o => o.Id == id);
@@ -672,8 +734,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.editar")]
         public async Task<bool> EliminarRequisicion(
             Guid id,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarRequisicionAsync(context, http, id);
+
             var req = await context.ProyectoRequisiciones
                 .Include(r => r.Proyecto)
                 .FirstOrDefaultAsync(r => r.Id == id);
@@ -692,8 +758,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.fase.operativa")]
         public async Task<bool> EliminarAnticipoDirecto(
             Guid id,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarAnticipoDirectoAsync(context, http, id);
+
             var ant = await context.ProyectoAnticiposDirectos
                 .Include(a => a.Proyecto)
                 .FirstOrDefaultAsync(a => a.Id == id);
@@ -715,8 +785,12 @@ namespace RmsErp.Api.Mutations.Tracker
         [Authorize(Policy = "proyectos.fase.administrativa")]
         public async Task<bool> EliminarCorteFacturacion(
             Guid id,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http)
         {
+            // Seguridad: solo el responsable del proyecto o un gerente
+            await ProyectoAcceso.ValidarCorteAsync(context, http, id);
+
             var corte = await context.ProyectoCortesFacturacion
                 .Include(c => c.Proyecto)
                 .FirstOrDefaultAsync(c => c.Id == id);
