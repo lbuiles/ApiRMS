@@ -482,3 +482,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Archivos subidos por los usuarios (documentos de clientes/contratistas): no van al repositorio
+uploads/
