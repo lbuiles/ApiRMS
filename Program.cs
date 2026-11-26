@@ -81,6 +81,7 @@ builder.Services
     .AddTypeExtension<TareaQuery>()
     .AddTypeExtension<NotificacionQuery>()
     .AddTypeExtension<CuadrillaQuery>()          // ← NUEVO
+    .AddTypeExtension<RmsErp.Api.Queries.Sistema.VersionQuery>()
 
     .AddMutationType(d => d.Name("Mutation"))
     .AddTypeExtension<ClienteMutation>()

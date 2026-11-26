@@ -19,4 +19,12 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
   </ItemGroup>
 
+  <!-- Fecha de compilación para mostrar la versión publicada (query versionApi) -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>FechaCompilacion</_Parameter1>
+      <_Parameter2>$([System.DateTime]::UtcNow.ToString("o"))</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
