@@ -195,6 +195,7 @@ namespace RmsErp.Api.Mutations.Tracker
             return req;
         }
 
+        [Authorize(Policy = "proyectos.editar")]
         public async Task<ProyectoRequisicion> ComprarRequisicion(
             ComprarRequisicionInput input,
             [Service] ApplicationDbContext context)
@@ -640,11 +641,15 @@ namespace RmsErp.Api.Mutations.Tracker
     // ELIMINAR OT / REQ / ANT DIRECTO
     // Solo cuando el proyecto no está cerrado
     // ============================================================
+    // Seguridad: antes esta clase no tenía [Authorize] y sus mutations se podían
+    // ejecutar sin sesión. Cada eliminación exige el mismo permiso con el que se crea el registro.
     [ExtendObjectType("Mutation")]
+    [Authorize]
     public class EliminarSubFlujosMutation
     {
         private static readonly string[] EstadosCerrados = { "FINALIZADO_TOTAL", "Cancelado", "Incumplimiento" };
 
+        [Authorize(Policy = "proyectos.editar")]
         public async Task<bool> EliminarOrdenTrabajo(
             Guid id,
             [Service] ApplicationDbContext context)
@@ -664,6 +669,7 @@ namespace RmsErp.Api.Mutations.Tracker
             return true;
         }
 
+        [Authorize(Policy = "proyectos.editar")]
         public async Task<bool> EliminarRequisicion(
             Guid id,
             [Service] ApplicationDbContext context)
@@ -683,6 +689,7 @@ namespace RmsErp.Api.Mutations.Tracker
             return true;
         }
 
+        [Authorize(Policy = "proyectos.fase.operativa")]
         public async Task<bool> EliminarAnticipoDirecto(
             Guid id,
             [Service] ApplicationDbContext context)
@@ -705,6 +712,7 @@ namespace RmsErp.Api.Mutations.Tracker
             return true;
         }
 
+        [Authorize(Policy = "proyectos.fase.administrativa")]
         public async Task<bool> EliminarCorteFacturacion(
             Guid id,
             [Service] ApplicationDbContext context)
