@@ -27,6 +27,11 @@ public class ClaimsTransformer : IClaimsTransformation
 
         if (string.IsNullOrEmpty(email)) return principal;
 
+        // Seguridad: Google indica si el correo fue verificado; si viene en "false" no se reconoce al usuario
+        var verificado = principal.FindFirst("email_verified")?.Value;
+        if (verificado != null && !string.Equals(verificado, "true", StringComparison.OrdinalIgnoreCase))
+            return principal;
+
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
@@ -35,7 +40,8 @@ public class ClaimsTransformer : IClaimsTransformation
                 .ThenInclude(up => up.Permiso)
             .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower()); 
 
-        if (usuario != null)
+        // Seguridad: los usuarios INACTIVOS no reciben identidad RMS ni permisos
+        if (usuario != null && string.Equals(usuario.Estado, "ACTIVO", StringComparison.OrdinalIgnoreCase))
         {
             var claimsIdentity = new ClaimsIdentity();
 

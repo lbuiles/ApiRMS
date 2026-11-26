@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RmsErp.Api.Services;
@@ -6,7 +7,9 @@ using System.Threading.Tasks;
 
 namespace RmsErp.Api.Controllers
 {
+    // Seguridad: solo usuarios con sesión pueden subir archivos (antes era anónimo)
     [ApiController]
+    [Authorize]
     [Route("[controller]")] 
     public class UploadController : ControllerBase
     {

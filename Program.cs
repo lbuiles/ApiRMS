@@ -54,11 +54,15 @@ builder.Services.AddScoped<IClaimsTransformation, ClaimsTransformer>();
 
 builder.Services.AddAuthorization(options =>
 {
-    options.FallbackPolicy = null;
-
-    options.DefaultPolicy = new AuthorizationPolicyBuilder()
+    // Seguridad: además de un token válido de Google, se exige que el usuario esté registrado y ACTIVO
+    // en RMS (el ClaimsTransformer solo agrega "rms_user_id" en ese caso).
+    var usuarioRms = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
+        .RequireClaim("rms_user_id")
         .Build();
+
+    options.DefaultPolicy = usuarioRms;   // [Authorize] sin política
+    options.FallbackPolicy = usuarioRms;  // endpoints sin atributo (incluye /graphql)
 });
 
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
@@ -128,11 +132,12 @@ if (!Directory.Exists(uploadsPath))
     Directory.CreateDirectory(uploadsPath);
 }
 
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(uploadsPath),
-    RequestPath = "/uploads"
-});
+// Seguridad: los archivos ya no se sirven públicamente; se entregan por ArchivosController (/archivos?ruta=...)
+// app.UseStaticFiles(new StaticFileOptions
+// {
+//     FileProvider = new PhysicalFileProvider(uploadsPath),
+//     RequestPath = "/uploads"
+// });
 // -----------------------------------------------------------------
 
 app.UseRouting();
