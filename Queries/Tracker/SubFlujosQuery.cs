@@ -4,6 +4,8 @@ using HotChocolate.Authorization;
 using System.Linq;
 using RmsErp.Api.Data;
 using RmsErp.Api.Models.Tracker;
+using Microsoft.AspNetCore.Http;
+using RmsErp.Api.Services;
 
 namespace RmsErp.Api.Queries.Tracker
 {
@@ -18,14 +20,16 @@ namespace RmsErp.Api.Queries.Tracker
         [UseProjection]
         [UseFiltering]
         [UseSorting]
-        public IQueryable<ProyectoRequisicion> GetRequisiciones([Service] ApplicationDbContext context)
+        public IQueryable<ProyectoRequisicion> GetRequisiciones([Service] ApplicationDbContext context, [Service] IHttpContextAccessor http)
         {
             /* * Al tener [UseFiltering], Angular podrá pedir:
              * "Tráeme las requisiciones WHERE ProyectoId == X" (Para el panel lateral)
              * O también:
              * "Tráeme las requisiciones WHERE Estado == 'Por Aprobar'" (Para el buzón del Gerente)
              */
-            return context.ProyectoRequisiciones;
+            // Seguridad: solo registros de proyectos visibles para el usuario
+            var (uid, verTodos) = ProyectoAcceso.Contexto(http);
+            return context.ProyectoRequisiciones.Where(x => verTodos || (x.Proyecto != null && x.Proyecto.ResponsableId == uid));
         }
 
         // ==========================================
@@ -35,9 +39,11 @@ namespace RmsErp.Api.Queries.Tracker
         [UseProjection]
         [UseFiltering]
         [UseSorting]
-        public IQueryable<ProyectoOrdenTrabajo> GetOrdenesTrabajo([Service] ApplicationDbContext context)
+        public IQueryable<ProyectoOrdenTrabajo> GetOrdenesTrabajo([Service] ApplicationDbContext context, [Service] IHttpContextAccessor http)
         {
-            return context.ProyectoOrdenesTrabajo;
+            // Seguridad: solo registros de proyectos visibles para el usuario
+            var (uid, verTodos) = ProyectoAcceso.Contexto(http);
+            return context.ProyectoOrdenesTrabajo.Where(x => verTodos || (x.Proyecto != null && x.Proyecto.ResponsableId == uid));
         }
 
         // ==========================================
@@ -47,9 +53,11 @@ namespace RmsErp.Api.Queries.Tracker
         [UseProjection]
         [UseFiltering]
         [UseSorting]
-        public IQueryable<ProyectoAnticipo> GetAnticipos([Service] ApplicationDbContext context)
+        public IQueryable<ProyectoAnticipo> GetAnticipos([Service] ApplicationDbContext context, [Service] IHttpContextAccessor http)
         {
-            return context.ProyectoAnticipos;
+            // Seguridad: solo registros de proyectos visibles para el usuario
+            var (uid, verTodos) = ProyectoAcceso.Contexto(http);
+            return context.ProyectoAnticipos.Where(x => verTodos || (x.Proyecto != null && x.Proyecto.ResponsableId == uid));
         }
 
         // ==========================================
@@ -59,9 +67,11 @@ namespace RmsErp.Api.Queries.Tracker
         [UseProjection]
         [UseFiltering]
         [UseSorting]
-        public IQueryable<ProyectoCorteFacturacion> GetCortesFacturacion([Service] ApplicationDbContext context)
+        public IQueryable<ProyectoCorteFacturacion> GetCortesFacturacion([Service] ApplicationDbContext context, [Service] IHttpContextAccessor http)
         {
-            return context.ProyectoCortesFacturacion;
+            // Seguridad: solo registros de proyectos visibles para el usuario
+            var (uid, verTodos) = ProyectoAcceso.Contexto(http);
+            return context.ProyectoCortesFacturacion.Where(x => verTodos || (x.Proyecto != null && x.Proyecto.ResponsableId == uid));
         }
     }
 }

@@ -54,6 +54,14 @@ namespace RmsErp.Api.Controllers
             if (!System.IO.File.Exists(completa)) return NotFound();
 
             if (!TiposContenido.TryGetContentType(completa, out var tipo)) tipo = "application/octet-stream";
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+
+            // Seguridad: solo PDF e imágenes se muestran en el navegador; cualquier otro tipo
+            // (incluidos archivos antiguos como .html o .svg) se entrega como descarga.
+            var seMuestra = tipo == "application/pdf" || tipo == "image/jpeg" || tipo == "image/png" || tipo == "image/webp";
+            if (!seMuestra)
+                return PhysicalFile(completa, "application/octet-stream", System.IO.Path.GetFileName(completa), enableRangeProcessing: true);
+
             return PhysicalFile(completa, tipo, enableRangeProcessing: true);
         }
     }
