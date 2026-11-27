@@ -22,8 +22,8 @@
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
   </ItemGroup>
 
-  <!-- Fecha de compilación para mostrar la versión publicada (query versionApi) -->
-  <ItemGroup>
+  <!-- Fecha de compilación para mostrar la versión publicada (query versionApi). Solo en Release: en Debug cambiaba en cada compilación y dotnet watch lo detectaba como cambio. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>FechaCompilacion</_Parameter1>
       <_Parameter2>$([System.DateTime]::UtcNow.ToString("o"))</_Parameter2>
