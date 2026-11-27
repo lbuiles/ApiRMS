@@ -35,8 +35,35 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+// Sesión: el token de Google solo se usa para iniciar sesión (/auth/sesion); luego la app usa
+// el token RMS de 12 horas. El esquema "Bearer" elige cómo validar según el emisor del token.
+var llaveSesion = SesionRms.Llave(builder.Configuration, builder.Environment);
+builder.Services.AddSingleton(new SesionService(llaveSesion));
+
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = SesionRms.EsquemaPorDefecto;
+        options.DefaultChallengeScheme = SesionRms.EsquemaPorDefecto;
+    })
+    .AddPolicyScheme(SesionRms.EsquemaPorDefecto, "Google o sesión RMS", options =>
+    {
+        options.ForwardDefaultSelector = SesionRms.EsquemaPara;
+    })
+    .AddJwtBearer(SesionRms.Esquema, options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = SesionRms.Emisor,
+            ValidateAudience = true,
+            ValidAudience = SesionRms.Audiencia,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = llaveSesion,
+            ClockSkew = TimeSpan.FromMinutes(2)
+        };
+    })
+    .AddJwtBearer(SesionRms.EsquemaGoogle, options =>
     {
         options.Authority = "https://accounts.google.com";
         options.TokenValidationParameters = new TokenValidationParameters
