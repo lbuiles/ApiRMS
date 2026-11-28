@@ -126,6 +126,7 @@ builder.Services
     .AddTypeExtension<NotificacionMutation>()
     .AddTypeExtension<CuadrillaMutation>()       // ← NUEVO
     .AddTypeExtension<RmsErp.Api.Mutations.Sistema.PushMutation>()
+    .AddTypeExtension<RmsErp.Api.Mutations.Sistema.PerfilMutation>()
 
     .AddAuthorization()
     .AddProjections()
