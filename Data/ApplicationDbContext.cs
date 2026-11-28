@@ -66,6 +66,7 @@ namespace RmsErp.Api.Data
 
         // --- MÓDULO NOTIFICACIONES ---
         public DbSet<Notificacion> Notificaciones { get; set; }
+        public DbSet<PushSuscripcion> PushSuscripciones { get; set; }
 
         // --- Módulo Cuadrillas (submenú de Proyectos) ---
         public DbSet<Cuadrilla> Cuadrillas { get; set; }
@@ -328,6 +329,23 @@ namespace RmsErp.Api.Data
                 e.HasOne(n => n.UsuarioDestino)
                  .WithMany()
                  .HasForeignKey(n => n.UsuarioDestinoId)
+                 .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Suscripciones de Web Push (una por navegador/dispositivo)
+            modelBuilder.Entity<PushSuscripcion>(e =>
+            {
+                e.ToTable("PushSuscripciones");
+                e.HasKey(p => p.Id);
+                e.Property(p => p.Endpoint).HasMaxLength(800).IsRequired();
+                e.Property(p => p.P256dh).HasMaxLength(200).IsRequired();
+                e.Property(p => p.Auth).HasMaxLength(100).IsRequired();
+                e.Property(p => p.Dispositivo).HasMaxLength(200);
+                e.HasIndex(p => p.Endpoint).IsUnique();
+                e.HasIndex(p => p.UsuarioId);
+                e.HasOne(p => p.Usuario)
+                 .WithMany()
+                 .HasForeignKey(p => p.UsuarioId)
                  .OnDelete(DeleteBehavior.Cascade);
             });
         }

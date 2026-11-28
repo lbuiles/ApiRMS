@@ -109,6 +109,7 @@ builder.Services
     .AddTypeExtension<NotificacionQuery>()
     .AddTypeExtension<CuadrillaQuery>()          // ← NUEVO
     .AddTypeExtension<RmsErp.Api.Queries.Sistema.VersionQuery>()
+    .AddTypeExtension<RmsErp.Api.Queries.Sistema.PushQuery>()
 
     .AddMutationType(d => d.Name("Mutation"))
     .AddTypeExtension<ClienteMutation>()
@@ -124,6 +125,7 @@ builder.Services
     .AddTypeExtension<TareaMutation>()
     .AddTypeExtension<NotificacionMutation>()
     .AddTypeExtension<CuadrillaMutation>()       // ← NUEVO
+    .AddTypeExtension<RmsErp.Api.Mutations.Sistema.PushMutation>()
 
     .AddAuthorization()
     .AddProjections()
@@ -148,6 +150,15 @@ builder.Services.AddControllers();
 
 // --- NUEVO: Registrar NotificacionHelperService ---
 builder.Services.AddScoped<NotificacionHelperService>();
+
+// --- Notificaciones push (Web Push con llaves VAPID; sin llaves queda desactivado) ---
+var pushOpciones = builder.Configuration.GetSection("Push").Get<RmsErp.Api.Services.Push.PushOpciones>()
+                   ?? new RmsErp.Api.Services.Push.PushOpciones();
+builder.Services.AddSingleton(pushOpciones);
+builder.Services.AddHttpClient("push", c => c.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddSingleton<RmsErp.Api.Services.Push.WebPushEmisor>();
+builder.Services.AddSingleton<RmsErp.Api.Services.Push.PushCola>();
+builder.Services.AddHostedService<RmsErp.Api.Services.Push.PushWorker>();
 builder.Services.AddScoped<CuadrillaKpiService>();
 // --------------------------------------------------
 
