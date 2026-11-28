@@ -61,6 +61,8 @@ namespace RmsErp.Api.Mutations.Tracker
         string? EstadoForzado
     );
 
+    public record AlertaGerenciaResultado(int Notificados, bool CorreoEnviado);
+
     public record ObservacionInput(
         Guid ProyectoId,
         Guid UsuarioId,
@@ -504,14 +506,15 @@ namespace RmsErp.Api.Mutations.Tracker
             }
         }
 
-        private async Task NotificarAlertaCriticaN8n(
+        /// <summary>Envía la alerta al flujo de n8n (correo). Devuelve true si n8n la recibió.</summary>
+        private async Task<bool> NotificarAlertaCriticaN8n(
             string codigo, string nombre, string estado,
             string cliente, string responsable,
             string division, List<string> alertas, List<string> destinatarios)
         {
             try
             {
-                if (!destinatarios.Any()) return;
+                if (!destinatarios.Any()) return false;
 
                 using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                 var urlWebhook = "http://erp-n8n:5678/webhook/alerta-critica-proyecto";
@@ -531,12 +534,86 @@ namespace RmsErp.Api.Mutations.Tracker
 
                 var json = System.Text.Json.JsonSerializer.Serialize(payload);
                 var body = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-                await httpClient.PostAsync(urlWebhook, body);
+                var resp = await httpClient.PostAsync(urlWebhook, body);
+                if (!resp.IsSuccessStatusCode)
+                    Console.WriteLine($"n8n respondió {(int)resp.StatusCode} a la alerta crítica de {codigo} (¿flujo 'alerta-critica-proyecto' inactivo?)");
+                return resp.IsSuccessStatusCode;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error al notificar alerta crítica a n8n: {ex.Message}");
+                return false;
             }
+        }
+
+        // ==========================================
+        // ALERTA MANUAL A GERENCIA (Panel de Alertas SLA)
+        // ==========================================
+
+        /// <summary>
+        /// Envía una alerta de un proyecto a gerencia y a los responsables de alertas de la división:
+        /// en la campana (con aviso push) y por correo vía n8n si el flujo está disponible.
+        /// </summary>
+        [Authorize(Policy = "proyectos.leer")]
+        public async Task<AlertaGerenciaResultado> NotificarGerencia(
+            Guid proyectoId,
+            List<string>? alertas,
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http,
+            [Service] NotificacionHelperService notificaciones)
+        {
+            await ProyectoAcceso.ValidarProyectoAsync(context, http, proyectoId);
+            var proyecto = await context.Proyectos.FindAsync(proyectoId)
+                ?? throw new GraphQLException("Proyecto no encontrado.");
+
+            var actorId = ProyectoAcceso.Contexto(http).usuarioId;
+            var actor = await context.Usuarios.Where(u => u.Id == actorId).Select(u => u.Nombre).FirstOrDefaultAsync() ?? "Un usuario";
+
+            var slugDivision = proyecto.LineaNegocio switch
+            {
+                "civiles"            => "proyectos.civiles.alertas",
+                "energia"            => "proyectos.energia.alertas",
+                "telecomunicaciones" => "proyectos.telecom.alertas",
+                _                    => null
+            };
+            var slugs = slugDivision != null ? new[] { "proyectos.gerente", slugDivision } : new[] { "proyectos.gerente" };
+            var destinatarios = await context.UsuarioPermisos
+                .Where(up => slugs.Contains(up.Permiso.Slug) && up.Usuario.Estado == "ACTIVO")
+                .Select(up => new { up.UsuarioId, up.Usuario.Email })
+                .Distinct()
+                .ToListAsync();
+
+            var textos = (alertas ?? new List<string>())
+                .Where(a => !string.IsNullOrWhiteSpace(a))
+                .Select(a => a.Trim().Length > 200 ? a.Trim()[..200] : a.Trim())
+                .Take(10)
+                .ToList();
+            if (textos.Count == 0) textos.Add("Revisión solicitada desde el Panel de Alertas (SLA)");
+
+            // Campana + push (no a quien la envía)
+            var ids = destinatarios.Select(d => d.UsuarioId).Where(id => id != actorId).Distinct().ToList();
+            await notificaciones.CrearSinRepetirAsync(ids, TipoAlerta,
+                $"{actor} envió una alerta de {proyecto.Codigo} — {proyecto.Nombre}: {string.Join("; ", textos)}",
+                proyecto.Id, TimeSpan.Zero);
+
+            // Correo vía n8n (si el flujo está activo)
+            var cliente = await context.Clientes.Where(c => c.Id == proyecto.ClienteId).Select(c => c.RazonSocial).FirstOrDefaultAsync() ?? "Sin cliente";
+            var responsable = proyecto.ResponsableId.HasValue
+                ? await context.Usuarios.Where(u => u.Id == proyecto.ResponsableId).Select(u => u.Nombre).FirstOrDefaultAsync() ?? "Sin responsable"
+                : "Sin responsable";
+            var divisionLabel = proyecto.LineaNegocio switch
+            {
+                "civiles"            => "Construcción",
+                "energia"            => "Energía",
+                "telecomunicaciones" => "O&M Telecomunicaciones",
+                _                    => proyecto.LineaNegocio
+            };
+            var correo = await NotificarAlertaCriticaN8n(
+                proyecto.Codigo, proyecto.Nombre, proyecto.Estado, cliente, responsable, divisionLabel,
+                textos.Prepend($"Alerta manual enviada por {actor}").ToList(),
+                destinatarios.Select(d => d.Email).Where(e => !string.IsNullOrEmpty(e)).Distinct().ToList());
+
+            return new AlertaGerenciaResultado(ids.Count, correo);
         }
 
         [Authorize(Policy = "proyectos.bitacora")]

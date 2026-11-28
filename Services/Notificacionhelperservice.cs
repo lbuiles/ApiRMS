@@ -14,11 +14,13 @@ namespace RmsErp.Api.Services
     {
         private readonly ApplicationDbContext _db;
         private readonly PushCola _push;
+        private readonly IHttpContextAccessor _http;
 
-        public NotificacionHelperService(ApplicationDbContext db, PushCola push)
+        public NotificacionHelperService(ApplicationDbContext db, PushCola push, IHttpContextAccessor http)
         {
             _db = db;
             _push = push;
+            _http = http;
         }
 
         /// <summary>
@@ -87,8 +89,11 @@ namespace RmsErp.Api.Services
         // ─────────────────────────────────────────────────────────
         private async Task GuardarAsync(IEnumerable<Guid> usuariosDestinoIds, string tipo, string mensaje, Guid? entidadId)
         {
+            // Regla general: nunca se notifica a quien hizo el cambio (salvo la notificación de prueba)
+            var actorId = tipo == "prueba" ? Guid.Empty : ProyectoAcceso.Contexto(_http).usuarioId;
+
             var nuevas = usuariosDestinoIds
-                .Where(g => g != Guid.Empty)
+                .Where(g => g != Guid.Empty && g != actorId)
                 .Distinct()
                 .Select(uid => new Notificacion
                 {
