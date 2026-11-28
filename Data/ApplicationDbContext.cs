@@ -63,6 +63,7 @@ namespace RmsErp.Api.Data
         public DbSet<TareaComentario> TareasComentarios { get; set; }
         public DbSet<TareaMovimiento> TareasMovimientos { get; set; }
         public DbSet<TareaHistorialEstado> TareasHistorialEstados { get; set; }
+        public DbSet<TareaPaso> TareasPasos { get; set; }
 
         // --- MÓDULO NOTIFICACIONES ---
         public DbSet<Notificacion> Notificaciones { get; set; }
@@ -331,6 +332,19 @@ namespace RmsErp.Api.Data
                  .HasForeignKey(n => n.UsuarioDestinoId)
                  .OnDelete(DeleteBehavior.Cascade);
             });
+
+            // Consecutivo visible de las tareas (RMS-1001...) desde una secuencia de SQL Server
+            modelBuilder.HasSequence<int>("TareaConsecutivo", "dbo").StartsAt(1001);
+            modelBuilder.Entity<Tarea>()
+                .Property(t => t.Consecutivo)
+                .HasDefaultValueSql("NEXT VALUE FOR dbo.TareaConsecutivo")
+                .ValueGeneratedOnAdd();
+
+            modelBuilder.Entity<TareaPaso>()
+                .HasOne(p => p.Tarea)
+                .WithMany(t => t.Pasos)
+                .HasForeignKey(p => p.TareaId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // Suscripciones de Web Push (una por navegador/dispositivo)
             modelBuilder.Entity<PushSuscripcion>(e =>
