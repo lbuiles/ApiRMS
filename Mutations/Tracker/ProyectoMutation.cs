@@ -71,10 +71,38 @@ namespace RmsErp.Api.Mutations.Tracker
     [Authorize]
     public class ProyectoMutation
     {
+        // Tipos de notificación del Tracker (el front los usa para abrir el proyecto)
+        public const string TipoAsignado = "proy_asignado";
+        public const string TipoEstado   = "proy_estado";
+        public const string TipoBitacora = "proy_bitacora";
+        public const string TipoAlerta   = "proy_alerta";
+
+        /// <summary>Avisa al nuevo responsable, salvo que se haya asignado a sí mismo.</summary>
+        private static async Task NotificarAsignacionAsync(Proyecto proyecto, Guid actorId, NotificacionHelperService notificaciones)
+        {
+            if (!proyecto.ResponsableId.HasValue || proyecto.ResponsableId == actorId) return;
+            await notificaciones.CrearSinRepetirAsync(
+                new[] { proyecto.ResponsableId.Value }, TipoAsignado,
+                $"Te asignaron como responsable del proyecto {proyecto.Codigo} — {proyecto.Nombre}.",
+                proyecto.Id, TimeSpan.FromMinutes(1));
+        }
+
+        private static string EstadoLegible(string? estado) => estado switch
+        {
+            "PENDIENTE"              => "Pendiente",
+            "PENDIENTE_PRELIMINARES" => "Preliminares",
+            "EN_EJECUCIÓN"           => "En ejecución",
+            "FINALIZADO_PARCIAL"     => "Finalizado parcial",
+            "FINALIZADO_TOTAL"       => "Finalizado",
+            _                        => estado ?? "—"
+        };
+
         [Authorize(Policy = "proyectos.crear")]
         public async Task<Proyecto> AddProyecto(
             ProyectoInput input,
-            [Service] ApplicationDbContext context)
+            [Service] ApplicationDbContext context,
+            [Service] IHttpContextAccessor http,
+            [Service] NotificacionHelperService notificaciones)
         {
             // ─── Resolver ClienteId ───────────────────────────────────────────────
             // El Angular puede enviar el UUID (selector) o un nombre libre (texto libre).
@@ -133,6 +161,8 @@ namespace RmsErp.Api.Mutations.Tracker
 
             context.Proyectos.Add(nuevoProyecto);
             await context.SaveChangesAsync();
+
+            await NotificarAsignacionAsync(nuevoProyecto, ProyectoAcceso.Contexto(http).usuarioId, notificaciones);
             return nuevoProyecto;
         }
 
@@ -167,7 +197,8 @@ namespace RmsErp.Api.Mutations.Tracker
             Guid id,
             ProyectoUpdateInput input,
             [Service] ApplicationDbContext context,
-            [Service] IHttpContextAccessor http)
+            [Service] IHttpContextAccessor http,
+            [Service] NotificacionHelperService notificaciones)
         {
             // Seguridad: solo el responsable del proyecto o un gerente
             await ProyectoAcceso.ValidarProyectoAsync(context, http, id);
@@ -175,6 +206,10 @@ namespace RmsErp.Api.Mutations.Tracker
 
             var proyecto = await context.Proyectos.FindAsync(id);
             if (proyecto == null) return null;
+
+            // Valores anteriores, para notificar solo si cambian
+            var responsableAnterior = proyecto.ResponsableId;
+            var estadoAnterior      = proyecto.Estado;
 
             // ==========================================
             // 1. ACTUALIZACIÓN DE DATOS BÁSICOS
@@ -334,13 +369,23 @@ namespace RmsErp.Api.Mutations.Tracker
 
             await context.SaveChangesAsync();
 
+            // ── Notificaciones en la campana ──────────────────────────────
+            var actorId = ProyectoAcceso.Contexto(http).usuarioId;
+            if (proyecto.ResponsableId != responsableAnterior)
+                await NotificarAsignacionAsync(proyecto, actorId, notificaciones);
+            else if (proyecto.Estado != estadoAnterior && proyecto.ResponsableId.HasValue && proyecto.ResponsableId != actorId)
+                await notificaciones.CrearSinRepetirAsync(
+                    new[] { proyecto.ResponsableId.Value }, TipoEstado,
+                    $"El proyecto {proyecto.Codigo} — {proyecto.Nombre} pasó a {EstadoLegible(proyecto.Estado)}.",
+                    proyecto.Id, TimeSpan.Zero);
+
             // ── Detección automática de alertas críticas ──────────────────
-            await DetectarYNotificarAlertasCriticas(proyecto, context);
+            await DetectarYNotificarAlertasCriticas(proyecto, context, notificaciones, actorId);
 
             return proyecto;
         }
 
-        private async Task DetectarYNotificarAlertasCriticas(Proyecto proyecto, ApplicationDbContext context)
+        private async Task DetectarYNotificarAlertasCriticas(Proyecto proyecto, ApplicationDbContext context, NotificacionHelperService notificaciones, Guid actorId)
         {
             try
             {
@@ -434,6 +479,24 @@ namespace RmsErp.Api.Mutations.Tracker
                     cliente, responsable, divisionLabel,
                     alertasCriticas, destinatarios
                 );
+
+                // Campana: los mismos destinatarios del correo más el responsable.
+                // Se repite como máximo una vez al día mientras la alerta siga sin leer.
+                var slugsAlerta = slugDivision != null
+                    ? new[] { "proyectos.gerente", slugDivision }
+                    : new[] { "proyectos.gerente" };
+                var idsAlerta = await context.UsuarioPermisos
+                    .Where(up => slugsAlerta.Contains(up.Permiso.Slug) && up.Usuario.Estado == "ACTIVO")
+                    .Select(up => up.UsuarioId)
+                    .Distinct()
+                    .ToListAsync();
+                if (proyecto.ResponsableId.HasValue) idsAlerta.Add(proyecto.ResponsableId.Value);
+                idsAlerta.Remove(actorId); // quien guardó ya ve la alerta en pantalla
+
+                await notificaciones.CrearSinRepetirAsync(
+                    idsAlerta, TipoAlerta,
+                    $"Alerta crítica en {proyecto.Codigo} — {proyecto.Nombre}: {string.Join("; ", alertasCriticas)}",
+                    proyecto.Id, TimeSpan.FromHours(24));
             }
             catch (Exception ex)
             {
@@ -480,7 +543,8 @@ namespace RmsErp.Api.Mutations.Tracker
         public async Task<ProyectoObservacion?> AddObservacion(
             ObservacionInput input,
             [Service] ApplicationDbContext context,
-            [Service] IHttpContextAccessor http)
+            [Service] IHttpContextAccessor http,
+            [Service] NotificacionHelperService notificaciones)
         {
             // Seguridad: solo el responsable del proyecto o un gerente
             await ProyectoAcceso.ValidarProyectoAsync(context, http, input.ProyectoId);
@@ -488,16 +552,32 @@ namespace RmsErp.Api.Mutations.Tracker
             var proyecto = await context.Proyectos.FindAsync(input.ProyectoId);
             if (proyecto == null) return null;
 
+            // El autor es siempre el usuario de la sesión (no el que envíe el cliente)
+            var autorId = ProyectoAcceso.Contexto(http).usuarioId;
+            if (autorId == Guid.Empty) autorId = input.UsuarioId;
+
             var nuevaObs = new ProyectoObservacion
             {
                 ProyectoId    = input.ProyectoId,
-                UsuarioId     = input.UsuarioId,
+                UsuarioId     = autorId,
                 Observacion   = input.ObservacionTexto,
                 FechaRegistro = DateTime.UtcNow
             };
 
             context.ProyectoObservaciones.Add(nuevaObs);
             await context.SaveChangesAsync();
+
+            // Campana: avisa al responsable cuando otra persona escribe en la bitácora
+            if (proyecto.ResponsableId.HasValue && proyecto.ResponsableId != autorId)
+            {
+                var autor = await context.Usuarios.Where(u => u.Id == autorId).Select(u => u.Nombre).FirstOrDefaultAsync() ?? "Alguien";
+                var texto = input.ObservacionTexto.Trim();
+                if (texto.Length > 120) texto = texto[..117] + "...";
+                await notificaciones.CrearSinRepetirAsync(
+                    new[] { proyecto.ResponsableId.Value }, TipoBitacora,
+                    $"{autor} escribió en la bitácora de {proyecto.Codigo} — {proyecto.Nombre}: \"{texto}\"",
+                    proyecto.Id, TimeSpan.Zero);
+            }
 
             // Recargar con el Usuario incluido — nuevaObs.Usuario nunca se asigna
             // explícitamente al crear, y sin este Include el campo puede llegar
