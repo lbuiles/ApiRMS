@@ -17,10 +17,54 @@ namespace RmsErp.Api.Queries.Tracker
         int AnticiposPendientes
     );
 
-    [ExtendObjectType("Query")]
+    /// <summary>Movimientos con fecha de un mes (yyyy-MM): lo facturado y lo gastado en ese mes.</summary>
+    public record FlujoMes(string Mes, decimal Facturado, decimal Gasto);
+
+        [ExtendObjectType("Query")]
     [Authorize]
     public class DashboardQuery
     {
+        /// <summary>
+        /// Flujo de caja mes a mes del dashboard, con las mismas reglas de visibilidad y filtros:
+        ///  - Facturado: cortes de facturación no anulados, por FechaCorte (Proyecto.ValorFacturado es la suma de estos cortes).
+        ///  - Gasto: requisiciones compradas (ValorRealCompra) por FechaCompra.
+        /// Lo registrado a mano en el proyecto sin movimiento con fecha no aparece aquí; el front muestra esa diferencia.
+        /// </summary>
+        [Authorize(Policy = "proyectos.leer")]
+        public async Task<List<FlujoMes>> GetFlujoMensual(
+            string? linea,
+            string? estado,
+            [Service] ApplicationDbContext context,
+            [Service] Microsoft.AspNetCore.Http.IHttpContextAccessor http)
+        {
+            var proyectos = RmsErp.Api.Services.ProyectoAcceso.Visibles(context.Proyectos, http)
+                .Where(p => !p.Archivado);
+            if (!string.IsNullOrWhiteSpace(linea) && linea != "todas") proyectos = proyectos.Where(p => p.LineaNegocio == linea);
+            if (!string.IsNullOrWhiteSpace(estado) && estado != "todos") proyectos = proyectos.Where(p => p.Estado == estado);
+            var ids = proyectos.Select(p => p.Id);
+
+            var facturado = await context.ProyectoCortesFacturacion
+                .Where(c => ids.Contains(c.ProyectoId) && c.Estado != "ANULADO")
+                .GroupBy(c => new { c.FechaCorte.Year, c.FechaCorte.Month })
+                .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(c => c.ValorCorte) })
+                .ToListAsync();
+
+            var gasto = await context.ProyectoRequisiciones
+                .Where(r => ids.Contains(r.ProyectoId) && r.FechaCompra != null && r.ValorRealCompra != null && r.Estado != "Rechazada")
+                .GroupBy(r => new { r.FechaCompra!.Value.Year, r.FechaCompra!.Value.Month })
+                .Select(g => new { g.Key.Year, g.Key.Month, Total = g.Sum(r => r.ValorRealCompra ?? 0) })
+                .ToListAsync();
+
+            return facturado.Select(f => (f.Year, f.Month)).Union(gasto.Select(g => (g.Year, g.Month)))
+                .Distinct()
+                .OrderBy(m => m.Year).ThenBy(m => m.Month)
+                .Select(m => new FlujoMes(
+                    $"{m.Year:D4}-{m.Month:D2}",
+                    facturado.Where(f => f.Year == m.Year && f.Month == m.Month).Sum(f => f.Total),
+                    gasto.Where(g => g.Year == m.Year && g.Month == m.Month).Sum(g => g.Total)))
+                .ToList();
+        }
+
         public async Task<DashboardResumen> GetDashboardResumen(
             [Service] ApplicationDbContext context,
             [Service] Microsoft.AspNetCore.Http.IHttpContextAccessor http)

@@ -26,6 +26,9 @@ namespace RmsErp.Api.Models.Tareas
 
         public bool Activo { get; set; } = true;
 
+        /// <summary>Máximo de tareas en curso en esta columna (WIP). Null = sin límite.</summary>
+        public int? LimiteWip { get; set; }
+
         // Navegación
         public ICollection<Tarea> Tareas { get; set; } = new List<Tarea>();
     }

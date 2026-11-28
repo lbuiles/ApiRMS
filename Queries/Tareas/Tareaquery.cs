@@ -204,7 +204,8 @@ namespace RmsErp.Api.Queries.Tareas
                 .Include(t => t.CreadoPor)
                 .Include(t => t.Asignados).ThenInclude(a => a.Usuario)
                 .Include(t => t.Comentarios)
-                .Include(t => t.Movimientos);
+                .Include(t => t.Movimientos)
+                .Include(t => t.Pasos);
 
             if (!verTodas)
             {
@@ -238,7 +239,8 @@ namespace RmsErp.Api.Queries.Tareas
                 .Include(t => t.CreadoPor)
                 .Include(t => t.Asignados).ThenInclude(a => a.Usuario)
                 .Include(t => t.Comentarios)
-                .Include(t => t.Movimientos);
+                .Include(t => t.Movimientos)
+                .Include(t => t.Pasos);
 
             if (!verTodas)
             {
@@ -296,6 +298,7 @@ namespace RmsErp.Api.Queries.Tareas
                     .ThenInclude(c => c.Usuario)
                 .Include(t => t.Movimientos.OrderByDescending(m => m.FechaMovimiento))
                     .ThenInclude(m => m.MovidoPor)
+                .Include(t => t.Pasos.OrderBy(p => p.Orden))
                 .Include(t => t.HistorialEstados.OrderByDescending(h => h.FechaCambio))
                     .ThenInclude(h => h.EstadoAnterior)
                 .Include(t => t.HistorialEstados)

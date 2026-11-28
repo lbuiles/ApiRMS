@@ -12,9 +12,21 @@ namespace RmsErp.Api.Models.Tareas
         [Key]
         public Guid Id { get; set; } = Guid.NewGuid();
 
+        /// <summary>Número consecutivo visible (RMS-1001...). Lo asigna la base con la secuencia dbo.TareaConsecutivo.</summary>
+        public int Consecutivo { get; set; }
+
         [Required]
         [MaxLength(250)]
         public string Titulo { get; set; } = string.Empty;
+
+        /// <summary>Critica | Alta | Media | Baja</summary>
+        [Required]
+        [MaxLength(20)]
+        public string Prioridad { get; set; } = "Media";
+
+        /// <summary>Etiquetas separadas por coma, sin '#' (p. ej. "Finanzas,O&amp;M").</summary>
+        [MaxLength(400)]
+        public string? Etiquetas { get; set; }
 
         public string? Descripcion { get; set; }
 
@@ -54,5 +66,6 @@ namespace RmsErp.Api.Models.Tareas
         public ICollection<TareaComentario> Comentarios { get; set; } = new List<TareaComentario>();
         public ICollection<TareaMovimiento> Movimientos { get; set; } = new List<TareaMovimiento>();
         public ICollection<TareaHistorialEstado> HistorialEstados { get; set; } = new List<TareaHistorialEstado>();
+        public ICollection<TareaPaso> Pasos { get; set; } = new List<TareaPaso>();
     }
 }

@@ -23,7 +23,10 @@ namespace RmsErp.Api.Mutations.Tareas
         DateTime? FechaPresupuestoInicio,
         DateTime? FechaPresupuestoFin,
         Guid CreadoPorId,
-        List<Guid>? UsuariosAsignados   // IDs de los responsables iniciales
+        List<Guid>? UsuariosAsignados,  // IDs de los responsables iniciales
+        string? Prioridad = null,       // Critica | Alta | Media | Baja (por defecto Media)
+        List<string>? Etiquetas = null,
+        List<string>? Pasos = null      // Lista de chequeo inicial
     );
 
     public record TareaUpdateInput(
@@ -31,7 +34,9 @@ namespace RmsErp.Api.Mutations.Tareas
         string? Descripcion,
         DateTime? FechaPresupuestoInicio,
         DateTime? FechaPresupuestoFin,
-        DateTime? FechaRealFinalizacion
+        DateTime? FechaRealFinalizacion,
+        string? Prioridad = null,       // null = no cambia
+        List<string>? Etiquetas = null  // null = no cambia; lista vacía = quitar todas
     );
 
     public record MoverTareaInput(
@@ -65,7 +70,8 @@ namespace RmsErp.Api.Mutations.Tareas
         string Color,
         int Orden,
         bool EsEstadoInicial,
-        bool EsEstadoFinal
+        bool EsEstadoFinal,
+        int? LimiteWip = null           // Máximo de tareas en la columna (null = sin límite)
     );
 
     // =========================================================
@@ -107,10 +113,17 @@ namespace RmsErp.Api.Mutations.Tareas
                 FechaPresupuestoFin    = input.FechaPresupuestoFin,
                 CreadoPorId            = input.CreadoPorId,
                 FechaCreacion          = DateTime.UtcNow,
-                VecesMovida            = 0
+                VecesMovida            = 0,
+                Prioridad              = NormalizarPrioridad(input.Prioridad) ?? "Media",
+                Etiquetas              = NormalizarEtiquetas(input.Etiquetas)
             };
 
             context.Tareas.Add(tarea);
+
+            // Lista de chequeo inicial
+            var orden = 0;
+            foreach (var texto in (input.Pasos ?? new List<string>()).Select(p => p?.Trim()).Where(p => !string.IsNullOrEmpty(p)).Take(30))
+                context.TareasPasos.Add(new TareaPaso { TareaId = tarea.Id, Texto = texto!.Length > 300 ? texto[..300] : texto, Orden = orden++ });
 
             // Registrar historial de estado inicial
             context.TareasHistorialEstados.Add(new TareaHistorialEstado
@@ -161,6 +174,8 @@ namespace RmsErp.Api.Mutations.Tareas
                 .Include(t => t.Estado)
                 .Include(t => t.CreadoPor)
                 .Include(t => t.Asignados).ThenInclude(a => a.Usuario)
+                .Include(t => t.Pasos)
+                .Include(t => t.Comentarios)
                 .FirstAsync(t => t.Id == tarea.Id);
         }
 
@@ -186,6 +201,8 @@ namespace RmsErp.Api.Mutations.Tareas
             tarea.FechaPresupuestoFin    = input.FechaPresupuestoFin;
             tarea.FechaRealFinalizacion  = input.FechaRealFinalizacion;
             tarea.FechaActualizacion     = DateTime.UtcNow;
+            if (input.Prioridad != null) tarea.Prioridad = NormalizarPrioridad(input.Prioridad) ?? tarea.Prioridad;
+            if (input.Etiquetas != null) tarea.Etiquetas = NormalizarEtiquetas(input.Etiquetas);
 
             await context.SaveChangesAsync();
 
@@ -193,6 +210,8 @@ namespace RmsErp.Api.Mutations.Tareas
                 .Include(t => t.Estado)
                 .Include(t => t.CreadoPor)
                 .Include(t => t.Asignados).ThenInclude(a => a.Usuario)
+                .Include(t => t.Pasos)
+                .Include(t => t.Comentarios)
                 .FirstOrDefaultAsync(t => t.Id == id);
         }
 
@@ -276,6 +295,8 @@ namespace RmsErp.Api.Mutations.Tareas
             return await context.Tareas
                 .Include(t => t.Estado)
                 .Include(t => t.Asignados).ThenInclude(a => a.Usuario)
+                .Include(t => t.Pasos)
+                .Include(t => t.Comentarios)
                 .FirstOrDefaultAsync(t => t.Id == input.TareaId);
         }
 
@@ -317,6 +338,8 @@ namespace RmsErp.Api.Mutations.Tareas
             return await context.Tareas
                 .Include(t => t.Estado)
                 .Include(t => t.Asignados).ThenInclude(a => a.Usuario)
+                .Include(t => t.Pasos)
+                .Include(t => t.Comentarios)
                 .Include(t => t.Movimientos.OrderByDescending(m => m.FechaMovimiento))
                 .FirstOrDefaultAsync(t => t.Id == input.TareaId);
         }
@@ -391,6 +414,8 @@ namespace RmsErp.Api.Mutations.Tareas
             return await context.Tareas
                 .Include(t => t.Estado)
                 .Include(t => t.Asignados).ThenInclude(a => a.Usuario)
+                .Include(t => t.Pasos)
+                .Include(t => t.Comentarios)
                 .FirstOrDefaultAsync(t => t.Id == input.TareaId);
         }
 
@@ -454,6 +479,68 @@ namespace RmsErp.Api.Mutations.Tareas
         // ADMINISTRACIÓN DE ESTADOS (solo tareas.estados.admin)
         // =========================================================
 
+        // ---------------------------------------------------------
+        // LISTA DE CHEQUEO (pasos de la tarea)
+        // ---------------------------------------------------------
+        [Authorize(Policy = "tareas.ver")]
+        public async Task<TareaPaso> AddPasoTarea(
+            Guid tareaId,
+            string texto,
+            [Service] ApplicationDbContext context)
+        {
+            texto = (texto ?? "").Trim();
+            if (texto.Length == 0) throw new GraphQLException("El paso no puede quedar vacío.");
+            if (!await context.Tareas.AnyAsync(t => t.Id == tareaId)) throw new GraphQLException("La tarea no existe.");
+
+            var orden = await context.TareasPasos.Where(p => p.TareaId == tareaId).Select(p => (int?)p.Orden).MaxAsync() ?? -1;
+            var paso = new TareaPaso { TareaId = tareaId, Texto = texto.Length > 300 ? texto[..300] : texto, Orden = orden + 1 };
+            context.TareasPasos.Add(paso);
+            await context.SaveChangesAsync();
+            return paso;
+        }
+
+        [Authorize(Policy = "tareas.ver")]
+        public async Task<TareaPaso?> TogglePasoTarea(
+            int id,
+            [Service] ApplicationDbContext context)
+        {
+            var paso = await context.TareasPasos.FindAsync(id);
+            if (paso == null) return null;
+            paso.Completado = !paso.Completado;
+            await context.SaveChangesAsync();
+            return paso;
+        }
+
+        [Authorize(Policy = "tareas.ver")]
+        public async Task<bool> DeletePasoTarea(
+            int id,
+            [Service] ApplicationDbContext context)
+        {
+            return await context.TareasPasos.Where(p => p.Id == id).ExecuteDeleteAsync() > 0;
+        }
+
+        private static readonly string[] Prioridades = { "Critica", "Alta", "Media", "Baja" };
+
+        private static string? NormalizarPrioridad(string? p)
+        {
+            if (string.IsNullOrWhiteSpace(p)) return null;
+            var limpia = p.Trim().Replace("í", "i").Replace("Í", "I");
+            var encontrada = Prioridades.FirstOrDefault(x => x.Equals(limpia, StringComparison.OrdinalIgnoreCase));
+            return encontrada ?? throw new GraphQLException("Prioridad no válida (Critica, Alta, Media o Baja).");
+        }
+
+        private static string? NormalizarEtiquetas(IEnumerable<string>? etiquetas)
+        {
+            var lista = (etiquetas ?? Enumerable.Empty<string>())
+                .Select(e => (e ?? "").Trim().TrimStart('#').Replace(",", " ").Trim())
+                .Where(e => e.Length > 0)
+                .Select(e => e.Length > 30 ? e[..30] : e)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToList();
+            return lista.Count == 0 ? null : string.Join(",", lista);
+        }
+
         [Authorize(Policy = "tareas.estados.admin")]
         public async Task<EstadoTarea> AddEstadoTarea(
             EstadoTareaInput input,
@@ -480,6 +567,7 @@ namespace RmsErp.Api.Mutations.Tareas
                 Orden           = input.Orden,
                 EsEstadoInicial = input.EsEstadoInicial,
                 EsEstadoFinal   = input.EsEstadoFinal,
+                LimiteWip       = input.LimiteWip is > 0 ? input.LimiteWip : null,
                 Activo          = true
             };
 
@@ -502,6 +590,7 @@ namespace RmsErp.Api.Mutations.Tareas
             estado.Orden           = input.Orden;
             estado.EsEstadoInicial = input.EsEstadoInicial;
             estado.EsEstadoFinal   = input.EsEstadoFinal;
+            estado.LimiteWip       = input.LimiteWip is > 0 ? input.LimiteWip : null;
 
             await context.SaveChangesAsync();
             return estado;
